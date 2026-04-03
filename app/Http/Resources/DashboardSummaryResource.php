@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class DashboardSummaryResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'current_billing_cycle' => BillingCycleResource::make($this['billing_cycle']),
+            'total_monitored_users' => $this['total_monitored_users'],
+            'throttled_user_count' => $this['throttled_user_count'],
+            'active_isp_count' => $this['active_isp_count'],
+            'total_isp_traffic_this_cycle' => $this['total_isp_traffic_this_cycle'],
+            'total_user_traffic_this_cycle' => $this['total_user_traffic_this_cycle'],
+            'last_poll_timestamp' => $this['last_poll_timestamp'],
+        ];
+    }
+}
