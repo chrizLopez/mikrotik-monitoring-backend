@@ -2,6 +2,8 @@
 
 Production-ready Laravel 13 backend for a local MikroTik-based mini-ISP monitoring dashboard. The API polls RouterOS interface and queue counters, stores time-series snapshots, aggregates monthly quota usage, and serves authenticated dashboard endpoints for summaries, charts, top users, group totals, and CSV export.
 
+It now also includes a passive traffic analytics ingestion layer for websites, apps, game services, and category-level visibility. This analytics layer is read-only and intentionally honest about what can and cannot be identified from encrypted traffic.
+
 ## Overview
 
 This backend monitors:
@@ -36,11 +38,15 @@ Quota policy:
 Key backend layers:
 
 - Models and migrations for ISP, queue snapshot, billing cycle, and monthly summary data
+- Models and migrations for `traffic_entities`, `traffic_observations`, `traffic_entity_aliases`, and `traffic_entity_daily_summaries`
 - Seeders for WAN metadata, monitored users, and the default Sanctum admin
 - `App\Services\Mikrotik\MikrotikClient` implementing the RouterOS API protocol over PHP streams
 - `App\Services\Mikrotik\MikrotikPollingService` for polling and snapshot persistence
 - `App\Services\UsageAggregationService` for idempotent billing-cycle aggregation with counter-reset handling
 - `App\Services\DashboardService` for summary, history, top-user, group, and export queries
+- `App\Services\TrafficAnalytics\TrafficAnalyticsService` for top sites/apps/games/categories, per-user/per-ISP/group ranking, history, coverage, and CSV export
+- `App\Services\TrafficAnalytics\AnalyticsIngestionService` plus source adapters for `ntopng`, `zeek`, and normalized flow collectors
+- `App\Services\TrafficAnalytics\EntityResolverService` and `CategoryResolverService` for exact alias, suffix, mapping-rule, category-fallback, and unknown-encrypted resolution
 - Form Requests for auth/range validation
 - API Resources for response shaping
 - Artisan commands and Laravel scheduler for background polling
@@ -74,6 +80,11 @@ MIKROTIK_TIMEOUT=10
 BILLING_CYCLE_DAY=1
 BILLING_CYCLE_TIMEZONE=Asia/Manila
 SANCTUM_STATEFUL_DOMAINS=localhost,127.0.0.1
+
+NTOPNG_BASE_URL=
+NTOPNG_TOKEN=
+ZEEK_BASE_PATH=
+FLOW_ANALYTICS_ENDPOINT=
 ```
 
 ## Setup
@@ -123,6 +134,7 @@ Production cron:
 ```bash
 php artisan mikrotik:poll
 php artisan usage:aggregate-current-cycle
+php artisan analytics:import path/to/file.json --source=ntopng
 ```
 
 `mikrotik:poll`:
@@ -140,6 +152,58 @@ php artisan usage:aggregate-current-cycle
 - recomputes current-cycle usage from snapshots
 - is idempotent
 - treats negative deltas as queue counter resets
+
+`analytics:import`:
+
+- imports summarized JSON from `ntopng`, `zeek`, or normalized flow collector exports
+- resolves destinations into canonical `traffic_entities`
+- preserves raw observed names and confidence scores in `traffic_observations`
+- stores unknown or weakly classified traffic in the `Unknown Encrypted` bucket instead of inventing exact labels
+
+## Traffic Analytics Visibility Rules
+
+- Exact website or service names are shown only when metadata supports them.
+- Many encrypted flows can only be mapped to a service family such as `Steam / Valve services`, `Riot services`, or `Possible Discord traffic`.
+- Some flows can only be categorized generically as `Streaming`, `Gaming`, `Social Media`, `Communication`, `Browsing`, or `Downloads`.
+- When there is no reliable DNS, SNI, analyzer label, or mapping rule, traffic is assigned to `Unknown Encrypted`.
+- `GROUP_A_TOTAL` remains excluded from customer analytics and ranking endpoints.
+
+## Entity Resolution Strategy
+
+Traffic observations are resolved in this order:
+
+1. Exact alias match from `traffic_entity_aliases`
+2. Suffix or mapping-rule match from `config/traffic_analytics.php`
+3. Category fallback using analyzer-provided labels
+4. `Unknown Encrypted` fallback
+
+Mappings are intentionally configurable and extendable. Add new service families or aliases in:
+
+- `config/traffic_analytics.php`
+- `traffic_entity_aliases`
+
+## Traffic Analytics Endpoints
+
+- `GET /api/dashboard/traffic/top-sites?range=today|24h|7d|30d|cycle&limit=10`
+- `GET /api/dashboard/traffic/top-apps?range=today|24h|7d|30d|cycle&limit=10`
+- `GET /api/dashboard/traffic/top-games?range=today|24h|7d|30d|cycle&limit=10`
+- `GET /api/dashboard/traffic/top-categories?range=today|24h|7d|30d|cycle&limit=10`
+- `GET /api/dashboard/traffic/users/{user}/top-destinations?range=...&limit=10`
+- `GET /api/dashboard/traffic/isps/{isp}/top-destinations?range=...&limit=10`
+- `GET /api/dashboard/traffic/groups/top-destinations?group=A|B&range=...&limit=10`
+- `GET /api/dashboard/traffic/history?entity_id=...&range=...`
+- `GET /api/dashboard/traffic/overview?range=...`
+- `GET /api/dashboard/traffic/export.csv?range=...`
+
+## Future Live Integrations
+
+The app is not tightly coupled to one analyzer vendor. Current extension points:
+
+- `NtopngAnalyticsSource` for future API-based ntopng pulls
+- `ZeekAnalyticsSource` for summarized Zeek DNS/TLS/HTTP exports
+- `FlowAnalyticsSource` for flow collectors that already enrich destinations/apps
+
+Each source normalizes into the same internal observation shape before resolution and storage.
 
 ## MikroTik Assumptions
 

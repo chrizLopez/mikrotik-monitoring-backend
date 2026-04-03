@@ -38,4 +38,9 @@ class MonitoredUser extends Model
     {
         return $this->hasMany(MonthlyUserSummary::class);
     }
+
+    public function trafficObservations(): HasMany
+    {
+        return $this->hasMany(TrafficObservation::class);
+    }
 }

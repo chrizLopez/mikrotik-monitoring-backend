@@ -7,6 +7,7 @@ use App\Http\Requests\Dashboard\RangeRequest;
 use App\Services\BillingCycleService;
 use App\Services\DashboardAnalyticsService;
 use App\Services\DashboardService;
+use App\Services\TrafficAnalytics\TrafficAnalyticsService;
 use Illuminate\Contracts\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -164,6 +165,52 @@ class DashboardExportController extends Controller
                     $row['current_state'],
                     $row['last_state_change'],
                     $row['throttled_events'],
+                ]);
+            }
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    public function trafficAnalytics(RangeRequest $request, TrafficAnalyticsService $trafficAnalytics): StreamedResponse
+    {
+        $filename = sprintf('traffic-analytics-%s.csv', now()->format('Ymd_His'));
+
+        return response()->streamDownload(function () use ($trafficAnalytics, $request): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, [
+                'Recorded At',
+                'Source Type',
+                'User',
+                'Group',
+                'ISP',
+                'Entity',
+                'Entity Type',
+                'Category',
+                'Destination Host',
+                'App Name',
+                'Upload Bytes',
+                'Download Bytes',
+                'Total Bytes',
+                'Confidence Score',
+            ]);
+
+            foreach ($trafficAnalytics->exportRows($request->range()) as $row) {
+                fputcsv($handle, [
+                    $row['recorded_at'],
+                    $row['source_type'],
+                    $row['user'],
+                    $row['group_name'],
+                    $row['isp'],
+                    $row['entity'],
+                    $row['entity_type'],
+                    $row['category_name'],
+                    $row['destination_host'],
+                    $row['app_name'],
+                    $row['upload_bytes'],
+                    $row['download_bytes'],
+                    $row['total_bytes'],
+                    $row['confidence_score'],
                 ]);
             }
 
