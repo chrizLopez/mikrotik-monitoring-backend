@@ -9,6 +9,7 @@ use App\Http\Resources\HistoryResource;
 use App\Http\Resources\MonitoredUserResource;
 use App\Http\Resources\TopUserResource;
 use App\Models\MonitoredUser;
+use App\Services\DashboardAnalyticsService;
 use App\Services\DashboardService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -24,8 +25,8 @@ class DashboardUserController extends Controller
         return HistoryResource::make($dashboardService->userHistory($monitoredUser, $request->range()));
     }
 
-    public function topUsers(TopUsersRequest $request, DashboardService $dashboardService): AnonymousResourceCollection
+    public function topUsers(TopUsersRequest $request, DashboardAnalyticsService $analytics): AnonymousResourceCollection
     {
-        return TopUserResource::collection($dashboardService->topUsers($request->range(), $request->limit()));
+        return TopUserResource::collection(collect($analytics->topUsers($request->range(), $request->limit())));
     }
 }

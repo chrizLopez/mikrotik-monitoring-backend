@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\MonitoredUser;
 use App\Models\RouteStatusSnapshot;
+use App\Models\IspHealthSnapshot;
 use App\Services\Mikrotik\Contracts\MikrotikClientInterface;
 use App\Services\Mikrotik\CounterDeltaCalculator;
 use App\Services\Mikrotik\MikrotikNormalizer;
@@ -96,5 +97,28 @@ class MikrotikPollingServiceTest extends TestCase
         $this->assertNotNull($status);
         $this->assertSame('online', $status->status);
         $this->assertSame(true, $status->details['running']);
+    }
+
+    public function test_it_persists_health_snapshots_from_ping_stats(): void
+    {
+        config()->set('mikrotik.health_targets', ['ether1' => '1.1.1.1']);
+        config()->set('mikrotik.health_ping_count', 3);
+        $isp = \App\Models\Isp::factory()->create(['interface_name' => 'ether1']);
+        $client = Mockery::mock(MikrotikClientInterface::class);
+        $client->shouldReceive('pingStats')->once()->with('1.1.1.1', 3)->andReturn([
+            'latency_ms' => 32.5,
+            'packet_loss_percent' => 0.0,
+            'jitter_ms' => 2.5,
+            'status' => 'online',
+        ]);
+
+        $service = new MikrotikPollingService($client, new MikrotikNormalizer(new CounterDeltaCalculator()));
+        $service->persistHealthSnapshots(CarbonImmutable::parse('2026-04-04 03:25:00'));
+
+        $health = IspHealthSnapshot::query()->where('isp_id', $isp->id)->latest('recorded_at')->first();
+
+        $this->assertNotNull($health);
+        $this->assertSame('online', $health->status);
+        $this->assertSame(32.5, $health->latency_ms);
     }
 }

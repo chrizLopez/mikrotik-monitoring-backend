@@ -9,4 +9,6 @@ interface MikrotikClientInterface
     public function getSimpleQueues(): array;
 
     public function ping(string $host): bool;
+
+    public function pingStats(string $host, int $count = 3): array;
 }

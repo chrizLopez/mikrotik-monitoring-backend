@@ -18,6 +18,7 @@ class RangeService
             '7d' => new RangePreset('7d', $now->subDays(7), $now, 'day', 'Last 7 Days'),
             '30d' => new RangePreset('30d', $now->subDays(30), $now, 'day', 'Last 30 Days'),
             'cycle' => $this->resolveCycleRange($cycle),
+            'prev_cycle' => $this->resolvePreviousCycleRange($cycle),
             default => throw new InvalidArgumentException('Unsupported range preset.'),
         };
     }
@@ -45,6 +46,36 @@ class RangeService
             CarbonImmutable::instance($cycle->ends_at)->isPast() ? CarbonImmutable::instance($cycle->ends_at) : CarbonImmutable::now(),
             'day',
             $cycle->label,
+        );
+    }
+
+    private function resolvePreviousCycleRange(?BillingCycle $cycle): RangePreset
+    {
+        if (! $cycle) {
+            throw new InvalidArgumentException('Previous billing cycle range requires an active cycle.');
+        }
+
+        $previous = BillingCycle::query()
+            ->where('starts_at', '<', $cycle->starts_at)
+            ->orderByDesc('starts_at')
+            ->first();
+
+        if (! $previous) {
+            return new RangePreset(
+                'prev_cycle',
+                CarbonImmutable::instance($cycle->starts_at)->subMonth(),
+                CarbonImmutable::instance($cycle->starts_at),
+                'day',
+                'Previous Billing Cycle',
+            );
+        }
+
+        return new RangePreset(
+            'prev_cycle',
+            CarbonImmutable::instance($previous->starts_at),
+            CarbonImmutable::instance($previous->ends_at),
+            'day',
+            $previous->label,
         );
     }
 }

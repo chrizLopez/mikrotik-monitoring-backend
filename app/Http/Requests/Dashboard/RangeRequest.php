@@ -14,12 +14,17 @@ class RangeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'range' => ['nullable', 'in:today,24h,7d,30d,cycle'],
+            'range' => ['nullable', 'in:today,24h,7d,30d,cycle,prev_cycle'],
         ];
     }
 
     public function range(): string
     {
         return $this->string('range')->toString() ?: 'cycle';
+    }
+
+    public function limit(string $key = 'limit', int $default = 10, int $min = 1, int $max = 100): int
+    {
+        return max($min, min($max, (int) ($this->input($key) ?: $default)));
     }
 }

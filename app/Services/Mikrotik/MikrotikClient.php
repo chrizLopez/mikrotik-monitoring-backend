@@ -64,13 +64,51 @@ class MikrotikClient implements MikrotikClientInterface
 
     public function ping(string $host): bool
     {
+        $response = $this->pingStats($host, 1);
+
+        return ($response['status'] ?? 'offline') !== 'offline';
+    }
+
+    public function pingStats(string $host, int $count = 3): array
+    {
         $response = $this->runQuery(
             (new Query('/ping'))
                 ->equal('address', $host)
-                ->equal('count', 1)
+                ->equal('count', max(1, $count))
         );
+        $times = collect($response)
+            ->pluck('time')
+            ->map(function (mixed $value): ?float {
+                if ($value === null) {
+                    return null;
+                }
 
-        return ! empty($response);
+                if (is_numeric($value)) {
+                    return (float) $value;
+                }
+
+                if (preg_match('/([\d.]+)ms/i', (string) $value, $matches) === 1) {
+                    return (float) $matches[1];
+                }
+
+                return null;
+            })
+            ->filter(static fn (?float $value): bool => $value !== null)
+            ->values();
+        $sent = max(1, $count);
+        $received = $times->count();
+        $packetLoss = max(0, min(100, (($sent - $received) / $sent) * 100));
+        $avgLatency = $received > 0 ? round($times->avg(), 2) : null;
+        $jitter = $received > 1 ? round($times->max() - $times->min(), 2) : null;
+
+        return [
+            'sent' => $sent,
+            'received' => $received,
+            'latency_ms' => $avgLatency,
+            'packet_loss_percent' => round($packetLoss, 2),
+            'jitter_ms' => $jitter,
+            'status' => $received === 0 ? 'offline' : ($packetLoss >= 20 ? 'degraded' : 'online'),
+        ];
     }
 
     private function monitorTraffic(string $interfaceName): array

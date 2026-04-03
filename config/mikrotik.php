@@ -34,4 +34,10 @@ return [
     'excluded_queue_names' => [
         'GROUP_A_TOTAL',
     ],
+    'health_targets' => [
+        'ether1' => env('MIKROTIK_ETHER1_HEALTH_TARGET', '1.1.1.1'),
+        'ether2' => env('MIKROTIK_ETHER2_HEALTH_TARGET', '8.8.8.8'),
+        'ether4' => env('MIKROTIK_ETHER4_HEALTH_TARGET', '8.8.4.4'),
+    ],
+    'health_ping_count' => (int) env('MIKROTIK_HEALTH_PING_COUNT', 3),
 ];

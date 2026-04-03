@@ -10,9 +10,4 @@ class TopUsersRequest extends RangeRequest
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }
-
-    public function limit(): int
-    {
-        return (int) ($this->input('limit') ?: 10);
-    }
 }

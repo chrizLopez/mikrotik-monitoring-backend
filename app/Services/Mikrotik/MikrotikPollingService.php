@@ -5,6 +5,7 @@ namespace App\Services\Mikrotik;
 use App\Data\Mikrotik\InterfaceStatData;
 use App\Data\Mikrotik\QueueStatData;
 use App\Models\Isp;
+use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\RouteStatusSnapshot;
@@ -109,6 +110,7 @@ class MikrotikPollingService
         try {
             $interfaces = $this->pollInterfaces($recordedAt);
             $this->persistInterfaces($interfaces, $recordedAt);
+            $this->persistHealthSnapshots($recordedAt);
 
             $queues = $this->pollQueues();
             $this->persistQueues($queues, $recordedAt);
@@ -184,6 +186,36 @@ class MikrotikPollingService
                 'total_bytes' => $queue->totalBytes,
                 'max_limit' => $queue->maxLimit,
                 'state' => $queue->state,
+                'recorded_at' => $recordedAt,
+            ]);
+        }
+    }
+
+    public function persistHealthSnapshots(CarbonImmutable $recordedAt): void
+    {
+        $targets = config('mikrotik.health_targets', []);
+        $count = (int) config('mikrotik.health_ping_count', 3);
+        $isps = Isp::query()
+            ->where('is_active', true)
+            ->whereIn('interface_name', array_keys($targets))
+            ->get();
+
+        foreach ($isps as $isp) {
+            $target = $targets[$isp->interface_name] ?? null;
+
+            if (! $target) {
+                continue;
+            }
+
+            $health = $this->client->pingStats($target, $count);
+
+            IspHealthSnapshot::query()->create([
+                'isp_id' => $isp->id,
+                'ping_target' => $target,
+                'latency_ms' => $health['latency_ms'] ?? null,
+                'packet_loss_percent' => $health['packet_loss_percent'] ?? null,
+                'jitter_ms' => $health['jitter_ms'] ?? null,
+                'status' => $health['status'] ?? 'unknown',
                 'recorded_at' => $recordedAt,
             ]);
         }

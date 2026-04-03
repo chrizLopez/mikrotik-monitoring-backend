@@ -37,6 +37,11 @@ class Isp extends Model
         return $this->hasMany(RouteStatusSnapshot::class);
     }
 
+    public function healthSnapshots(): HasMany
+    {
+        return $this->hasMany(IspHealthSnapshot::class);
+    }
+
     public function resolveRouteBinding($value, $field = null): ?EloquentModel
     {
         $query = $this->newQuery();
