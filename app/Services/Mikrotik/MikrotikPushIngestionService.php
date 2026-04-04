@@ -1,0 +1,161 @@
+<?php
+
+namespace App\Services\Mikrotik;
+
+use App\Models\Isp;
+use App\Models\IspSnapshot;
+use App\Models\MonitoredUser;
+use App\Models\UserSnapshot;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class MikrotikPushIngestionService
+{
+    public function logAccessAttempt(Request $request): void
+    {
+        Log::info('MikroTik push endpoint accessed.', [
+            'ip' => $request->ip(),
+            'router_name' => $request->input('router_name'),
+            'sent_at' => $request->input('sent_at'),
+            'queue_count' => is_array($request->input('queues')) ? count($request->input('queues')) : 0,
+            'interface_count' => is_array($request->input('interfaces')) ? count($request->input('interfaces')) : 0,
+            'has_query_token' => $request->query->has('token'),
+            'has_header_token' => $request->headers->has('X-Mikrotik-Token'),
+        ]);
+    }
+
+    public function hasValidToken(Request $request): bool
+    {
+        $configuredToken = (string) config('mikrotik.push_token', '');
+        $providedToken = (string) ($request->query('token') ?? $request->header('X-Mikrotik-Token') ?? '');
+
+        return $configuredToken !== ''
+            && $providedToken !== ''
+            && hash_equals($configuredToken, $providedToken);
+    }
+
+    public function logUnauthorizedAttempt(Request $request): void
+    {
+        Log::warning('Unauthorized MikroTik push attempt.', [
+            'ip' => $request->ip(),
+            'router_name' => $request->input('router_name'),
+            'has_query_token' => $request->query->has('token'),
+            'has_header_token' => $request->headers->has('X-Mikrotik-Token'),
+        ]);
+    }
+
+    public function ingest(array $payload): array
+    {
+        $recordedAt = isset($payload['sent_at'])
+            ? CarbonImmutable::parse($payload['sent_at'])
+            : CarbonImmutable::now();
+
+        $routerName = $payload['router_name'] ?? null;
+        $skippedQueues = [];
+        $queuesIngested = 0;
+        $interfacesIngested = 0;
+
+        DB::transaction(function () use (
+            $payload,
+            $recordedAt,
+            $routerName,
+            &$skippedQueues,
+            &$queuesIngested,
+            &$interfacesIngested
+        ): void {
+            $queues = $payload['queues'] ?? [];
+            $interfaces = $payload['interfaces'] ?? [];
+
+            $userMap = MonitoredUser::query()
+                ->where('is_active', true)
+                ->whereIn('queue_name', collect($queues)->pluck('name')->all())
+                ->get()
+                ->keyBy('queue_name');
+
+            foreach ($queues as $queue) {
+                $queueName = $queue['name'];
+
+                if (in_array($queueName, config('mikrotik.excluded_queue_names', []), true)) {
+                    $skippedQueues[] = $queueName;
+                    continue;
+                }
+
+                $user = $userMap->get($queueName);
+
+                if (! $user) {
+                    Log::warning('Unknown MikroTik queue received via push ingestion.', [
+                        'router_name' => $routerName,
+                        'queue_name' => $queueName,
+                    ]);
+
+                    continue;
+                }
+
+                $uploadBytes = (int) $queue['upload_bytes'];
+                $downloadBytes = (int) $queue['download_bytes'];
+                $maxLimit = $queue['max_limit'] ?? null;
+
+                UserSnapshot::query()->create([
+                    'monitored_user_id' => $user->id,
+                    'upload_bytes_total' => $uploadBytes,
+                    'download_bytes_total' => $downloadBytes,
+                    'total_bytes' => $uploadBytes + $downloadBytes,
+                    'max_limit' => $maxLimit,
+                    'state' => $maxLimit === $user->throttled_max_limit ? 'THROTTLED' : 'NORMAL',
+                    'recorded_at' => $recordedAt,
+                ]);
+
+                $queuesIngested++;
+            }
+
+            $ispMap = Isp::query()
+                ->where('is_active', true)
+                ->whereIn('interface_name', collect($interfaces)->pluck('name')->all())
+                ->get()
+                ->keyBy('interface_name');
+
+            foreach ($interfaces as $interface) {
+                $interfaceName = $interface['name'];
+                $isp = $ispMap->get($interfaceName);
+
+                if (! $isp) {
+                    Log::warning('Unknown MikroTik interface received via push ingestion.', [
+                        'router_name' => $routerName,
+                        'interface_name' => $interfaceName,
+                    ]);
+
+                    continue;
+                }
+
+                IspSnapshot::query()->create([
+                    'isp_id' => $isp->id,
+                    'rx_bps' => null,
+                    'tx_bps' => null,
+                    'rx_bytes_total' => (int) $interface['rx_bytes'],
+                    'tx_bytes_total' => (int) $interface['tx_bytes'],
+                    'recorded_at' => $recordedAt,
+                ]);
+
+                $interfacesIngested++;
+            }
+        });
+
+        Log::info('MikroTik push data ingested successfully.', [
+            'router_name' => $routerName,
+            'queues_ingested' => $queuesIngested,
+            'interfaces_ingested' => $interfacesIngested,
+            'skipped_queues' => $skippedQueues,
+            'recorded_at' => $recordedAt->toDateTimeString(),
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Push data ingested',
+            'queues_ingested' => $queuesIngested,
+            'interfaces_ingested' => $interfacesIngested,
+            'skipped_queues' => array_values(array_unique($skippedQueues)),
+        ];
+    }
+}

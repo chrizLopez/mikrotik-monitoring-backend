@@ -68,6 +68,7 @@ MIKROTIK_HOST=192.168.88.1
 MIKROTIK_PORT=8728
 MIKROTIK_USERNAME=admin
 MIKROTIK_PASSWORD=
+MIKROTIK_PUSH_TOKEN=change-this-shared-secret
 MIKROTIK_USE_SSL=false
 MIKROTIK_TIMEOUT=10
 
@@ -166,6 +167,92 @@ Tracked queue names:
 Queue-to-user mapping is an exact string match between `monitored_users.queue_name` and the RouterOS simple queue `name`.
 
 `GROUP_A_TOTAL` is intentionally excluded because it is a shared cap queue, not an individual quota subject.
+
+## MikroTik Push Ingestion
+
+The backend now supports RouterOS push ingestion in addition to the existing poll-based flow.
+
+Endpoint:
+
+- `POST /api/mikrotik/push`
+
+Authentication:
+
+- query string token: `?token=YOUR_TOKEN`
+- or `X-Mikrotik-Token: YOUR_TOKEN`
+- token value must match `MIKROTIK_PUSH_TOKEN`
+- unauthorized requests return `403` and are logged
+
+Expected JSON payload:
+
+```json
+{
+  "router_name": "MikroTik",
+  "sent_at": "2026-04-05 10:00:00",
+  "queues": [
+    {
+      "name": "Home Router",
+      "upload_bytes": 12345,
+      "download_bytes": 67890,
+      "max_limit": "2M/5M"
+    },
+    {
+      "name": "VLAN40 - Peleyo",
+      "upload_bytes": 123,
+      "download_bytes": 456,
+      "max_limit": "512k/2M"
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "ether1",
+      "rx_bytes": 123456789,
+      "tx_bytes": 987654321
+    },
+    {
+      "name": "ether2",
+      "rx_bytes": 5555,
+      "tx_bytes": 6666
+    },
+    {
+      "name": "ether4",
+      "rx_bytes": 7777,
+      "tx_bytes": 8888
+    }
+  ]
+}
+```
+
+Ingestion behavior:
+
+- queue mapping is an exact match against `monitored_users.queue_name`
+- interface mapping is an exact match against `isps.interface_name`
+- `GROUP_A_TOTAL` is skipped and returned in `skipped_queues`
+- unknown queues and interfaces are logged and skipped
+- `UserSnapshot.state` is stored as `THROTTLED` when pushed `max_limit` exactly matches `monitored_users.throttled_max_limit`; otherwise `NORMAL`
+- `IspSnapshot` rows store cumulative byte counters only; `rx_bps` and `tx_bps` remain `null` for push ingestion
+
+Local-first test URLs:
+
+- `http://192.168.88.25:8000/api/mikrotik/push?token=YOUR_TOKEN`
+- `http://127.0.0.1:8000/api/mikrotik/push?token=YOUR_TOKEN`
+
+Production URL:
+
+- `https://dashboard.phsolarsizer.com/api/mikrotik/push?token=YOUR_TOKEN`
+
+Why local-first testing is recommended:
+
+- it confirms RouterOS can reach the Laravel host before DNS, TLS, and firewall variables are introduced
+- it lets you verify exact queue and interface names against the seeded mappings
+- it reduces deployment risk because the production switch is only a base-URL change once payloads are already working locally
+
+Deployment notes:
+
+- set `MIKROTIK_PUSH_TOKEN` to a strong shared secret in both local and production environments
+- if you change `.env`, run `php artisan config:clear`
+- expose the backend on a reachable HTTP URL locally first, then switch RouterOS to the production HTTPS endpoint
+- this endpoint is read/report-only and does not execute router-changing actions
 
 ## Billing Cycle Assumptions
 

@@ -7,9 +7,11 @@ use App\Http\Controllers\Api\DashboardGroupController;
 use App\Http\Controllers\Api\DashboardIspController;
 use App\Http\Controllers\Api\DashboardSummaryController;
 use App\Http\Controllers\Api\DashboardUserController;
+use App\Http\Controllers\Api\MikrotikPushController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/mikrotik/push', MikrotikPushController::class);
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);

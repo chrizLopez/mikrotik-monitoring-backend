@@ -5,6 +5,7 @@ return [
     'port' => (int) env('MIKROTIK_PORT', 8728),
     'username' => env('MIKROTIK_USERNAME'),
     'password' => env('MIKROTIK_PASSWORD'),
+    'push_token' => env('MIKROTIK_PUSH_TOKEN'),
     'use_ssl' => filter_var(env('MIKROTIK_USE_SSL', false), FILTER_VALIDATE_BOOL),
     'timeout' => (int) env('MIKROTIK_TIMEOUT', 5),
     'polled_interfaces' => [
