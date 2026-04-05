@@ -11,17 +11,57 @@ class BillingCycleService
     public function resolveCurrent(?CarbonImmutable $now = null): BillingCycle
     {
         $now ??= CarbonImmutable::now(config('dashboard.billing_cycle_timezone'));
+        [$startsAt, $endsAt, $label] = $this->cycleBoundaries($now);
 
-        return DB::transaction(function () use ($now): BillingCycle {
-            BillingCycle::query()->where('is_current', true)->update(['is_current' => false]);
+        return DB::transaction(function () use ($startsAt, $endsAt, $label): BillingCycle {
+            $startsAtUtc = $startsAt->utc();
+            $endsAtUtc = $endsAt->utc();
 
-            [$startsAt, $endsAt, $label] = $this->cycleBoundaries($now);
+            $currentCycle = BillingCycle::query()
+                ->where('is_current', true)
+                ->lockForUpdate()
+                ->first();
 
-            return BillingCycle::query()->updateOrCreate(
-                ['starts_at' => $startsAt->utc(), 'ends_at' => $endsAt->utc()],
-                ['label' => $label, 'is_current' => true],
-            );
-        });
+            if (
+                $currentCycle !== null
+                && $currentCycle->starts_at->eq($startsAtUtc)
+                && $currentCycle->ends_at->eq($endsAtUtc)
+            ) {
+                if ($currentCycle->label !== $label) {
+                    $currentCycle->forceFill(['label' => $label])->save();
+                }
+
+                return $currentCycle;
+            }
+
+            $targetCycle = BillingCycle::query()
+                ->where('starts_at', $startsAtUtc)
+                ->where('ends_at', $endsAtUtc)
+                ->lockForUpdate()
+                ->first();
+
+            if ($currentCycle !== null && $currentCycle->id !== $targetCycle?->id) {
+                $currentCycle->forceFill(['is_current' => false])->save();
+            }
+
+            if ($targetCycle !== null) {
+                if (! $targetCycle->is_current || $targetCycle->label !== $label) {
+                    $targetCycle->forceFill([
+                        'label' => $label,
+                        'is_current' => true,
+                    ])->save();
+                }
+
+                return $targetCycle;
+            }
+
+            return BillingCycle::query()->create([
+                'starts_at' => $startsAtUtc,
+                'ends_at' => $endsAtUtc,
+                'label' => $label,
+                'is_current' => true,
+            ]);
+        }, 5);
     }
 
     public function cycleBoundaries(?CarbonImmutable $now = null): array
