@@ -14,18 +14,48 @@ use Illuminate\Support\Facades\Log;
 
 class MikrotikPushIngestionService
 {
+    public function __construct(
+        protected readonly CounterDeltaCalculator $counterDeltaCalculator,
+    ) {
+    }
+
     public function logAccessAttempt(Request $request): void
     {
+        $queues = is_array($request->input('queues')) ? $request->input('queues') : [];
+        $interfaces = is_array($request->input('interfaces')) ? $request->input('interfaces') : [];
+        $healthItems = is_array($request->input('health')) ? $request->input('health') : [];
+
         Log::info('MikroTik push endpoint accessed.', [
             'ip' => $request->ip(),
             'router_name' => $request->input('router_name'),
             'sent_at' => $request->input('sent_at'),
-            'queue_count' => is_array($request->input('queues')) ? count($request->input('queues')) : 0,
-            'interface_count' => is_array($request->input('interfaces')) ? count($request->input('interfaces')) : 0,
-            'health_count' => is_array($request->input('health')) ? count($request->input('health')) : 0,
+            'queue_count' => count($queues),
+            'interface_count' => count($interfaces),
+            'health_count' => count($healthItems),
+            'queue_names' => collect($queues)->pluck('name')->filter()->values()->all(),
+            'interface_names' => collect($interfaces)->pluck('name')->filter()->values()->all(),
+            'health_names' => collect($healthItems)->pluck('name')->filter()->values()->all(),
             'has_query_token' => $request->query->has('token'),
             'has_header_token' => $request->headers->has('X-Mikrotik-Token'),
         ]);
+
+        if ($interfaces !== [] || $healthItems !== []) {
+            Log::info('MikroTik push payload details.', [
+                'interfaces' => collect($interfaces)->map(fn (array $item): array => [
+                    'name' => $item['name'] ?? null,
+                    'rx_bytes' => $item['rx_bytes'] ?? null,
+                    'tx_bytes' => $item['tx_bytes'] ?? null,
+                ])->values()->all(),
+                'health' => collect($healthItems)->map(fn (array $item): array => [
+                    'name' => $item['name'] ?? null,
+                    'ping_target' => $item['ping_target'] ?? null,
+                    'latency_ms' => $item['latency_ms'] ?? null,
+                    'packet_loss_percent' => $item['packet_loss_percent'] ?? null,
+                    'jitter_ms' => $item['jitter_ms'] ?? null,
+                    'status' => $item['status'] ?? null,
+                ])->values()->all(),
+            ]);
+        }
     }
 
     public function hasValidToken(Request $request): bool
@@ -134,12 +164,30 @@ class MikrotikPushIngestionService
                     continue;
                 }
 
+                $previousSnapshot = IspSnapshot::query()
+                    ->where('isp_id', $isp->id)
+                    ->latest('recorded_at')
+                    ->first();
+                $elapsedSeconds = $previousSnapshot?->recorded_at
+                    ? max(1, (int) $previousSnapshot->recorded_at->diffInSeconds($recordedAt))
+                    : 0;
+                $rxBytesTotal = (int) $interface['rx_bytes'];
+                $txBytesTotal = (int) $interface['tx_bytes'];
+
                 IspSnapshot::query()->create([
                     'isp_id' => $isp->id,
-                    'rx_bps' => null,
-                    'tx_bps' => null,
-                    'rx_bytes_total' => (int) $interface['rx_bytes'],
-                    'tx_bytes_total' => (int) $interface['tx_bytes'],
+                    'rx_bps' => $this->counterDeltaCalculator->calculateBps(
+                        $rxBytesTotal,
+                        $previousSnapshot?->rx_bytes_total,
+                        $elapsedSeconds,
+                    ),
+                    'tx_bps' => $this->counterDeltaCalculator->calculateBps(
+                        $txBytesTotal,
+                        $previousSnapshot?->tx_bytes_total,
+                        $elapsedSeconds,
+                    ),
+                    'rx_bytes_total' => $rxBytesTotal,
+                    'tx_bytes_total' => $txBytesTotal,
                     'recorded_at' => $recordedAt,
                 ]);
 

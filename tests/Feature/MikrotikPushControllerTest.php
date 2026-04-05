@@ -338,4 +338,41 @@ class MikrotikPushControllerTest extends TestCase
         $this->assertSame(7777, $snapshot->rx_bytes_total);
         $this->assertSame(8888, $snapshot->tx_bytes_total);
     }
+
+    public function test_interface_push_derives_bps_from_previous_snapshot(): void
+    {
+        config()->set('mikrotik.push_token', 'shared-secret');
+
+        $isp = Isp::factory()->create([
+            'name' => 'Old Starlink',
+            'interface_name' => 'ether1',
+        ]);
+
+        IspSnapshot::factory()->create([
+            'isp_id' => $isp->id,
+            'rx_bytes_total' => 1000,
+            'tx_bytes_total' => 2000,
+            'recorded_at' => '2026-04-05 10:00:00',
+        ]);
+
+        $this->postJson('/api/mikrotik/push?token=shared-secret', [
+            'sent_at' => '2026-04-05 10:00:10',
+            'interfaces' => [
+                [
+                    'name' => 'ether1',
+                    'rx_bytes' => 2000,
+                    'tx_bytes' => 3500,
+                ],
+            ],
+        ])->assertOk();
+
+        $snapshot = IspSnapshot::query()
+            ->where('isp_id', $isp->id)
+            ->latest('recorded_at')
+            ->first();
+
+        $this->assertNotNull($snapshot);
+        $this->assertSame(800, $snapshot->rx_bps);
+        $this->assertSame(1200, $snapshot->tx_bps);
+    }
 }
