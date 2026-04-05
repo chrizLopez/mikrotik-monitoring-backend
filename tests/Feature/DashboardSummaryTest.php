@@ -61,10 +61,13 @@ class DashboardSummaryTest extends TestCase
 
         $this->getJson('/api/dashboard/summary')
             ->assertOk()
+            ->assertJsonPath('data.range', 'cycle')
             ->assertJsonPath('data.total_monitored_users', 1)
             ->assertJsonPath('data.throttled_user_count', 1)
             ->assertJsonPath('data.active_isp_count', 1)
             ->assertJsonPath('data.total_isp_traffic_this_cycle', 11000)
-            ->assertJsonPath('data.total_user_traffic_this_cycle', 123456);
+            ->assertJsonPath('data.total_user_traffic_this_cycle', 123456)
+            ->assertJsonPath('data.total_isp_traffic_for_range', 11000)
+            ->assertJsonPath('data.total_user_traffic_for_range', 123456);
     }
 }
