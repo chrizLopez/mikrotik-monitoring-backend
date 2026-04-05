@@ -3,6 +3,7 @@
 namespace App\Services\Mikrotik;
 
 use App\Models\Isp;
+use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\UserSnapshot;
@@ -21,6 +22,7 @@ class MikrotikPushIngestionService
             'sent_at' => $request->input('sent_at'),
             'queue_count' => is_array($request->input('queues')) ? count($request->input('queues')) : 0,
             'interface_count' => is_array($request->input('interfaces')) ? count($request->input('interfaces')) : 0,
+            'health_count' => is_array($request->input('health')) ? count($request->input('health')) : 0,
             'has_query_token' => $request->query->has('token'),
             'has_header_token' => $request->headers->has('X-Mikrotik-Token'),
         ]);
@@ -56,6 +58,7 @@ class MikrotikPushIngestionService
         $skippedQueues = [];
         $queuesIngested = 0;
         $interfacesIngested = 0;
+        $healthIngested = 0;
 
         DB::transaction(function () use (
             $payload,
@@ -63,10 +66,12 @@ class MikrotikPushIngestionService
             $routerName,
             &$skippedQueues,
             &$queuesIngested,
-            &$interfacesIngested
+            &$interfacesIngested,
+            &$healthIngested,
         ): void {
             $queues = $payload['queues'] ?? [];
             $interfaces = $payload['interfaces'] ?? [];
+            $healthItems = $payload['health'] ?? [];
 
             $userMap = MonitoredUser::query()
                 ->where('is_active', true)
@@ -140,12 +145,45 @@ class MikrotikPushIngestionService
 
                 $interfacesIngested++;
             }
+
+            $healthIspMap = Isp::query()
+                ->where('is_active', true)
+                ->whereIn('interface_name', collect($healthItems)->pluck('name')->all())
+                ->get()
+                ->keyBy('interface_name');
+
+            foreach ($healthItems as $health) {
+                $interfaceName = $health['name'];
+                $isp = $healthIspMap->get($interfaceName);
+
+                if (! $isp) {
+                    Log::warning('Unknown MikroTik health interface received via push ingestion.', [
+                        'router_name' => $routerName,
+                        'interface_name' => $interfaceName,
+                    ]);
+
+                    continue;
+                }
+
+                IspHealthSnapshot::query()->create([
+                    'isp_id' => $isp->id,
+                    'ping_target' => $health['ping_target'] ?? null,
+                    'latency_ms' => $health['latency_ms'] ?? null,
+                    'packet_loss_percent' => $health['packet_loss_percent'] ?? null,
+                    'jitter_ms' => $health['jitter_ms'] ?? null,
+                    'status' => $health['status'],
+                    'recorded_at' => $recordedAt,
+                ]);
+
+                $healthIngested++;
+            }
         });
 
         Log::info('MikroTik push data ingested successfully.', [
             'router_name' => $routerName,
             'queues_ingested' => $queuesIngested,
             'interfaces_ingested' => $interfacesIngested,
+            'health_ingested' => $healthIngested,
             'skipped_queues' => $skippedQueues,
             'recorded_at' => $recordedAt->toDateTimeString(),
         ]);
@@ -155,6 +193,7 @@ class MikrotikPushIngestionService
             'message' => 'Push data ingested',
             'queues_ingested' => $queuesIngested,
             'interfaces_ingested' => $interfacesIngested,
+            'health_ingested' => $healthIngested,
             'skipped_queues' => array_values(array_unique($skippedQueues)),
         ];
     }

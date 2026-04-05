@@ -53,6 +53,7 @@ Supported payload fields:
 - `sent_at` optional date string
 - `queues` optional array
 - `interfaces` optional array
+- `health` optional array
 
 Queue payload rules:
 
@@ -65,6 +66,14 @@ Interface payload rules:
 
 - exact match against `isps.interface_name`
 - expected WAN interfaces are `ether1`, `ether2`, `ether4`
+- unknown interface names are logged and ignored
+
+Health payload rules:
+
+- exact match against `isps.interface_name`
+- expected fields are `ping_target`, `latency_ms`, `packet_loss_percent`, `jitter_ms`, and `status`
+- supported status values are `online`, `offline`, `degraded`, `unknown`
+- rows are stored in `isp_health_snapshots`
 - unknown interface names are logged and ignored
 
 Local-first examples:

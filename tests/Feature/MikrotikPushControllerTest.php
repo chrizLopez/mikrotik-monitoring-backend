@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Isp;
+use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\UserSnapshot;
@@ -97,6 +98,7 @@ class MikrotikPushControllerTest extends TestCase
                 'message' => 'Push data ingested',
                 'queues_ingested' => 2,
                 'interfaces_ingested' => 2,
+                'health_ingested' => 0,
                 'skipped_queues' => [],
             ]);
 
@@ -156,6 +158,7 @@ class MikrotikPushControllerTest extends TestCase
             ->assertJson([
                 'queues_ingested' => 1,
                 'interfaces_ingested' => 0,
+                'health_ingested' => 0,
                 'skipped_queues' => ['GROUP_A_TOTAL'],
             ]);
 
@@ -194,6 +197,7 @@ class MikrotikPushControllerTest extends TestCase
             ->assertJson([
                 'queues_ingested' => 0,
                 'interfaces_ingested' => 0,
+                'health_ingested' => 0,
                 'skipped_queues' => [],
             ]);
 
@@ -209,6 +213,77 @@ class MikrotikPushControllerTest extends TestCase
             ->withArgs(fn (string $message, array $context): bool => $message === 'Unknown MikroTik interface received via push ingestion.'
                 && $context['interface_name'] === 'ether9'
                 && $context['router_name'] === 'MikroTik');
+    }
+
+    public function test_health_snapshots_are_created_from_push_payload(): void
+    {
+        config()->set('mikrotik.push_token', 'shared-secret');
+
+        $isp = Isp::factory()->create([
+            'name' => 'Old Starlink',
+            'interface_name' => 'ether1',
+        ]);
+
+        $this->postJson('/api/mikrotik/push?token=shared-secret', [
+            'health' => [
+                [
+                    'name' => 'ether1',
+                    'ping_target' => '1.1.1.1',
+                    'latency_ms' => 24.5,
+                    'packet_loss_percent' => 0,
+                    'jitter_ms' => 3.2,
+                    'status' => 'online',
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJson([
+                'queues_ingested' => 0,
+                'interfaces_ingested' => 0,
+                'health_ingested' => 1,
+            ]);
+
+        $this->assertDatabaseHas('isp_health_snapshots', [
+            'isp_id' => $isp->id,
+            'ping_target' => '1.1.1.1',
+            'status' => 'online',
+        ]);
+
+        $snapshot = IspHealthSnapshot::query()->where('isp_id', $isp->id)->first();
+
+        $this->assertNotNull($snapshot);
+        $this->assertSame(24.5, $snapshot->latency_ms);
+        $this->assertSame(0.0, $snapshot->packet_loss_percent);
+        $this->assertSame(3.2, $snapshot->jitter_ms);
+    }
+
+    public function test_unknown_health_interfaces_are_logged_and_skipped(): void
+    {
+        config()->set('mikrotik.push_token', 'shared-secret');
+        Log::spy();
+
+        $this->postJson('/api/mikrotik/push?token=shared-secret', [
+            'health' => [
+                [
+                    'name' => 'ether9',
+                    'ping_target' => '9.9.9.9',
+                    'latency_ms' => 12,
+                    'packet_loss_percent' => 0,
+                    'jitter_ms' => 1,
+                    'status' => 'online',
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJson([
+                'health_ingested' => 0,
+            ]);
+
+        $this->assertDatabaseCount('isp_health_snapshots', 0);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Unknown MikroTik health interface received via push ingestion.'
+                && $context['interface_name'] === 'ether9');
     }
 
     public function test_throttled_state_is_derived_from_monitored_user_limit(): void

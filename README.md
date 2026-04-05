@@ -219,6 +219,24 @@ Expected JSON payload:
       "rx_bytes": 7777,
       "tx_bytes": 8888
     }
+  ],
+  "health": [
+    {
+      "name": "ether1",
+      "ping_target": "1.1.1.1",
+      "latency_ms": 24.5,
+      "packet_loss_percent": 0,
+      "jitter_ms": 3.1,
+      "status": "online"
+    },
+    {
+      "name": "ether2",
+      "ping_target": "8.8.8.8",
+      "latency_ms": 42.0,
+      "packet_loss_percent": 2,
+      "jitter_ms": 5.6,
+      "status": "degraded"
+    }
   ]
 }
 ```
@@ -227,10 +245,12 @@ Ingestion behavior:
 
 - queue mapping is an exact match against `monitored_users.queue_name`
 - interface mapping is an exact match against `isps.interface_name`
+- health mapping is an exact match against `isps.interface_name`
 - `GROUP_A_TOTAL` is skipped and returned in `skipped_queues`
-- unknown queues and interfaces are logged and skipped
+- unknown queues, interfaces, and health interfaces are logged and skipped
 - `UserSnapshot.state` is stored as `THROTTLED` when pushed `max_limit` exactly matches `monitored_users.throttled_max_limit`; otherwise `NORMAL`
 - `IspSnapshot` rows store cumulative byte counters only; `rx_bps` and `tx_bps` remain `null` for push ingestion
+- `IspHealthSnapshot` rows are created from pushed `health[]` items and feed the ISP latency/loss graph
 
 Local-first test URLs:
 
