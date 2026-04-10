@@ -87,8 +87,31 @@ class DashboardGroupsAndIspsTest extends TestCase
 
         $this->getJson('/api/dashboard/isps/ether1/history?range=cycle')
             ->assertOk()
-            ->assertJsonPath('data.totals.download_bytes', 600)
-            ->assertJsonPath('data.totals.upload_bytes', 900)
-            ->assertJsonPath('data.totals.total_bytes', 1500);
+            ->assertJsonPath('data.totals.download_bytes', 500)
+            ->assertJsonPath('data.totals.upload_bytes', 700)
+            ->assertJsonPath('data.totals.total_bytes', 1200);
+    }
+
+    public function test_isp_history_buckets_24h_results(): void
+    {
+        $cycle = BillingCycle::factory()->create(['is_current' => true]);
+        Sanctum::actingAs(User::factory()->create());
+        $isp = Isp::factory()->create(['interface_name' => 'ether2']);
+
+        foreach (range(0, 59) as $minute) {
+            IspSnapshot::factory()->create([
+                'isp_id' => $isp->id,
+                'rx_bytes_total' => 1_000 + ($minute * 100),
+                'tx_bytes_total' => 2_000 + ($minute * 100),
+                'rx_bps' => 1_000,
+                'tx_bps' => 2_000,
+                'recorded_at' => now()->subMinutes(60 - $minute),
+            ]);
+        }
+
+        $response = $this->getJson('/api/dashboard/isps/ether2/history?range=24h')
+            ->assertOk();
+
+        $this->assertLessThanOrEqual(5, count($response->json('data.points')));
     }
 }

@@ -82,7 +82,7 @@ class UsageAggregationService
         $start = CarbonImmutable::instance($cycle->starts_at);
         $end = CarbonImmutable::instance($cycle->ends_at);
 
-        return Isp::query()->get()->sum(function (Isp $isp) use ($start, $end): int {
+        return Isp::query()->where('is_active', true)->get()->sum(function (Isp $isp) use ($start, $end): int {
             return $this->snapshotUsageService
                 ->computeRangeUsage($isp->snapshots(), $start, $end, ['rx_bytes_total', 'tx_bytes_total'], false)['total_bytes'];
         });

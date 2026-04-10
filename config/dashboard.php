@@ -11,4 +11,9 @@ return [
         'A' => 'Group A',
         'B' => 'Group B',
     ],
+    'slow_query_log' => [
+        'enabled' => (bool) env('DASHBOARD_SLOW_QUERY_LOG', false),
+        'threshold_ms' => (int) env('DASHBOARD_SLOW_QUERY_THRESHOLD_MS', 250),
+        'channel' => env('DASHBOARD_SLOW_QUERY_CHANNEL', env('LOG_CHANNEL', 'stack')),
+    ],
 ];

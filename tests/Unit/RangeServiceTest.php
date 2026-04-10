@@ -18,7 +18,7 @@ class RangeServiceTest extends TestCase
             'is_current' => true,
         ]);
 
-        $preset = new RangeService()->resolve('cycle', $cycle);
+        $preset = (new RangeService())->resolve('cycle', $cycle);
 
         $this->assertSame('cycle', $preset->key);
         $this->assertSame('day', $preset->bucket);
@@ -27,7 +27,7 @@ class RangeServiceTest extends TestCase
 
     public function test_bucket_start_rounds_to_hour(): void
     {
-        $bucket = new RangeService()->bucketStart(CarbonImmutable::parse('2026-04-04 13:47:25'), 'hour');
+        $bucket = (new RangeService())->bucketStart(CarbonImmutable::parse('2026-04-04 13:47:25'), 'hour');
 
         $this->assertSame('2026-04-04 13:00:00', $bucket->format('Y-m-d H:i:s'));
     }

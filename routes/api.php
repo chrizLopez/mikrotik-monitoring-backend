@@ -21,14 +21,16 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/summary', DashboardSummaryController::class);
         Route::get('/live', [DashboardAnalyticsController::class, 'live']);
         Route::get('/isps', [DashboardIspController::class, 'index']);
-        Route::get('/isps/{isp}/history', [DashboardIspController::class, 'history']);
         Route::get('/isps/distribution', [DashboardAnalyticsController::class, 'ispDistribution']);
+        Route::get('/isps/{isp}', [DashboardIspController::class, 'show']);
+        Route::get('/isps/{isp}/history', [DashboardIspController::class, 'history']);
         Route::get('/isps/{isp}/health-history', [DashboardAnalyticsController::class, 'healthHistory']);
         Route::get('/users', [DashboardUserController::class, 'index']);
+        Route::get('/users/throttling-history', [DashboardAnalyticsController::class, 'throttlingHistory']);
         Route::get('/users/{monitoredUser}/history', [DashboardUserController::class, 'history']);
         Route::get('/users/{monitoredUser}/quota-timeline', [DashboardAnalyticsController::class, 'quotaTimeline']);
         Route::get('/users/{monitoredUser}/throttling-history', [DashboardAnalyticsController::class, 'userThrottlingHistory']);
-        Route::get('/users/throttling-history', [DashboardAnalyticsController::class, 'throttlingHistory']);
+        Route::get('/users/{monitoredUser}', [DashboardUserController::class, 'show']);
         Route::get('/top-users', [DashboardUserController::class, 'topUsers']);
         Route::get('/top-active-users', [DashboardAnalyticsController::class, 'topActiveUsers']);
         Route::get('/groups/usage', [DashboardGroupController::class, 'usage']);
