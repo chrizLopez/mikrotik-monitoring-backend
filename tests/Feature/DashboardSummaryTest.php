@@ -79,7 +79,7 @@ class DashboardSummaryTest extends TestCase
         Sanctum::actingAs(User::factory()->create());
 
         $mock = Mockery::mock(UsageAggregationService::class);
-        $mock->shouldReceive('aggregateCycle')->once()->withAnyArgs();
+        $mock->shouldReceive('aggregateCycle')->twice()->withAnyArgs();
         $mock->shouldReceive('totalIspTrafficForCycle')->once()->andReturn(0);
         $this->app->instance(UsageAggregationService::class, $mock);
 

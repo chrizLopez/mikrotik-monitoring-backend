@@ -32,7 +32,7 @@ class DashboardService
         $preset = $this->rangeService->resolve($range, $cycle);
         $summaryCacheKey = sprintf('dashboard:summary:%s:%s', $cycle->id, $preset->key);
 
-        return Cache::remember($summaryCacheKey, now()->addSeconds(30), function () use ($cycle, $preset): array {
+        $summary = Cache::remember($summaryCacheKey, now()->addSeconds(30), function () use ($cycle, $preset): array {
             $summaryBase = MonthlyUserSummary::query()
                 ->where('billing_cycle_id', $cycle->id)
                 ->selectRaw('COUNT(*) as total_users')
@@ -72,7 +72,6 @@ class DashboardService
 
             return [
                 'range' => $preset->key,
-                'billing_cycle' => $cycle,
                 'total_monitored_users' => (int) ($summaryBase?->total_users ?? 0),
                 'throttled_user_count' => (int) ($summaryBase?->throttled_users ?? 0),
                 'active_isp_count' => $activeIspCount,
@@ -83,6 +82,11 @@ class DashboardService
                 'last_poll_timestamp' => $lastPoll,
             ];
         });
+
+        return [
+            ...$summary,
+            'billing_cycle' => $cycle,
+        ];
     }
 
     public function currentIspStat(Isp $isp): Isp
@@ -92,17 +96,15 @@ class DashboardService
 
     public function currentIspStats(): Collection
     {
-        return Cache::remember('dashboard:isp-cards', now()->addSeconds(15), function (): Collection {
-            return Isp::query()
-                ->where('is_active', true)
-                ->with([
-                    'snapshots' => fn ($query) => $query->latest('recorded_at')->limit(1),
-                    'routeStatusSnapshots' => fn ($query) => $query->latest('recorded_at')->limit(1),
-                ])
-                ->orderByRaw('display_order is null')
-                ->orderBy('display_order')
-                ->get();
-        });
+        return Isp::query()
+            ->where('is_active', true)
+            ->with([
+                'snapshots' => fn ($query) => $query->latest('recorded_at')->limit(1),
+                'routeStatusSnapshots' => fn ($query) => $query->latest('recorded_at')->limit(1),
+            ])
+            ->orderByRaw('display_order is null')
+            ->orderBy('display_order')
+            ->get();
     }
 
     public function currentUserStat(MonitoredUser $user): MonitoredUser
@@ -408,15 +410,13 @@ class DashboardService
     public function resolveCurrentCycleWithFreshSummaries(): BillingCycle
     {
         $cycle = $this->billingCycleService->resolveCurrent();
-        Cache::remember(
-            sprintf('dashboard:cycle-summaries:%s', $cycle->id),
-            now()->addSeconds(30),
-            function () use ($cycle): bool {
-                $this->usageAggregationService->aggregateCycle($cycle);
+        $summaryCount = MonthlyUserSummary::query()
+            ->where('billing_cycle_id', $cycle->id)
+            ->count();
 
-                return true;
-            }
-        );
+        if ($summaryCount === 0) {
+            $this->usageAggregationService->aggregateCycle($cycle);
+        }
 
         return $cycle;
     }
