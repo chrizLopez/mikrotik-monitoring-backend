@@ -15,21 +15,31 @@ This backend monitors:
 
 WAN mapping:
 
-- `ether1` = Old Starlink
-- `ether2` = New Starlink
-- `ether4` = SmartBro
+- `ether1` = Gomo
+- `ether2` = Starlink ISP New
+- `ether4` = Smart Bro ISP
 
 Group mapping:
 
 - Group A: `Home Router`, `VLAN20 - Camaymayan`, `VLAN30 - Rutor`
 - Group B: `VLAN40 - Peleyo`, `VLAN50 - Yamba`, `VLAN60 - Piso WiFi`, `VLAN70 - Olario`
+- Group labels are organizational only and do not control WAN routing
 
 Quota policy:
 
 - Default speed: `2M/5M`
 - Throttled speed: `512k/2M`
 - Monthly quota: `200 GB`
-- `GROUP_A_TOTAL` is excluded from per-user tracking
+- `GROUP_A_TOTAL` is retired and not part of monitored user tracking
+
+Routing model:
+
+- All monitored users share all three WANs through equal PCC
+- Target distribution is `33.33% / 33.33% / 33.33%`
+- Connection marks: `conn_gomo`, `conn_starlink`, `conn_smart`
+- Routing marks: `to_GOMO`, `to_STARLINK`, `to_SMART`
+- Each WAN mark has its own failover chain
+- Router-originated traffic prefers Starlink ISP New, then Smart Bro ISP, then Gomo
 
 ## Architecture
 
@@ -100,7 +110,7 @@ php artisan db:seed
 
 Seeders create:
 
-- `isps`: `Old Starlink`, `New Starlink`, `SmartBro`
+- `isps`: `Gomo`, `Starlink ISP New`, `Smart Bro ISP`
 - `monitored_users`: seven real queue-backed users
 - `users`: default admin from `ADMIN_*`
 
@@ -166,7 +176,7 @@ Tracked queue names:
 
 Queue-to-user mapping is an exact string match between `monitored_users.queue_name` and the RouterOS simple queue `name`.
 
-`GROUP_A_TOTAL` is intentionally excluded because it is a shared cap queue, not an individual quota subject.
+Only the seven live per-subnet queues are treated as monitored users. Legacy queues such as `GROUP_A_TOTAL` are ignored.
 
 ## MikroTik Push Ingestion
 
@@ -246,7 +256,7 @@ Ingestion behavior:
 - queue mapping is an exact match against `monitored_users.queue_name`
 - interface mapping is an exact match against `isps.interface_name`
 - health mapping is an exact match against `isps.interface_name`
-- `GROUP_A_TOTAL` is skipped and returned in `skipped_queues`
+- only the seven live monitored queues are ingested
 - unknown queues, interfaces, and health interfaces are logged and skipped
 - `UserSnapshot.state` is stored as `THROTTLED` when pushed `max_limit` exactly matches `monitored_users.throttled_max_limit`; otherwise `NORMAL`
 - `IspSnapshot` rows store cumulative byte counters only; `rx_bps` and `tx_bps` remain `null` for push ingestion

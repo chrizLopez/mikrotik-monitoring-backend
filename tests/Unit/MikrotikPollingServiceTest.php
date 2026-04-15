@@ -19,10 +19,8 @@ class MikrotikPollingServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_it_skips_group_a_total_and_unknown_queues_when_polling(): void
+    public function test_it_logs_group_a_total_and_unknown_queues_when_polling(): void
     {
-        config()->set('mikrotik.excluded_queue_names', ['GROUP_A_TOTAL']);
-
         $client = Mockery::mock(MikrotikClientInterface::class);
         $service = new MikrotikPollingService($client, new MikrotikNormalizer(new CounterDeltaCalculator()));
         $rawQueues = collect([
@@ -45,7 +43,7 @@ class MikrotikPollingServiceTest extends TestCase
 
         $this->assertCount(1, $queues);
         $this->assertSame('Home Router', $queues->first()->name);
-        Log::shouldHaveReceived('warning')->once();
+        Log::shouldHaveReceived('warning')->twice();
     }
 
     public function test_it_matches_queue_names_even_when_router_returns_extra_whitespace(): void

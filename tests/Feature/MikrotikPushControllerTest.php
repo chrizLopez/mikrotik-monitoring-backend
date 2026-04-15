@@ -51,11 +51,11 @@ class MikrotikPushControllerTest extends TestCase
             'throttled_max_limit' => '512k/2M',
         ]);
         $ether1 = Isp::factory()->create([
-            'name' => 'Old Starlink',
+            'name' => 'Gomo',
             'interface_name' => 'ether1',
         ]);
         $ether2 = Isp::factory()->create([
-            'name' => 'New Starlink',
+            'name' => 'Starlink ISP New',
             'interface_name' => 'ether2',
         ]);
 
@@ -130,9 +130,10 @@ class MikrotikPushControllerTest extends TestCase
         ]);
     }
 
-    public function test_group_a_total_is_skipped(): void
+    public function test_group_a_total_is_not_ingested_as_a_monitored_user(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        Log::spy();
         MonitoredUser::factory()->create([
             'queue_name' => 'Home Router',
             'name' => 'Home Router',
@@ -159,7 +160,7 @@ class MikrotikPushControllerTest extends TestCase
                 'queues_ingested' => 1,
                 'interfaces_ingested' => 0,
                 'health_ingested' => 0,
-                'skipped_queues' => ['GROUP_A_TOTAL'],
+                'skipped_queues' => [],
             ]);
 
         $this->assertDatabaseCount('user_snapshots', 1);
@@ -167,6 +168,10 @@ class MikrotikPushControllerTest extends TestCase
             'max_limit' => '10M/10M',
             'total_bytes' => 300,
         ]);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Unknown MikroTik queue received via push ingestion.'
+                && $context['queue_name'] === 'GROUP_A_TOTAL');
     }
 
     public function test_unknown_queues_and_interfaces_are_logged_and_skipped(): void
@@ -220,7 +225,7 @@ class MikrotikPushControllerTest extends TestCase
         config()->set('mikrotik.push_token', 'shared-secret');
 
         $isp = Isp::factory()->create([
-            'name' => 'Old Starlink',
+            'name' => 'Gomo',
             'interface_name' => 'ether1',
         ]);
 
@@ -318,7 +323,7 @@ class MikrotikPushControllerTest extends TestCase
         config()->set('mikrotik.push_token', 'shared-secret');
 
         $isp = Isp::factory()->create([
-            'name' => 'SmartBro',
+            'name' => 'Smart Bro ISP',
             'interface_name' => 'ether4',
         ]);
 
@@ -344,7 +349,7 @@ class MikrotikPushControllerTest extends TestCase
         config()->set('mikrotik.push_token', 'shared-secret');
 
         $isp = Isp::factory()->create([
-            'name' => 'Old Starlink',
+            'name' => 'Gomo',
             'interface_name' => 'ether1',
         ]);
 

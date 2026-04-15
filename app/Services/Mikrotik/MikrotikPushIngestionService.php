@@ -112,11 +112,6 @@ class MikrotikPushIngestionService
             foreach ($queues as $queue) {
                 $queueName = $queue['name'];
 
-                if (in_array($queueName, config('mikrotik.excluded_queue_names', []), true)) {
-                    $skippedQueues[] = $queueName;
-                    continue;
-                }
-
                 $user = $userMap->get($queueName);
 
                 if (! $user) {

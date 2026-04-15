@@ -29,7 +29,7 @@ class UsageAggregationService
     {
         MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->orderBy('id')
             ->chunk(100, function (Collection $users) use ($cycle): void {
                 foreach ($users as $user) {

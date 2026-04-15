@@ -63,9 +63,9 @@ class DashboardUsersTest extends TestCase
         $cycle = BillingCycle::factory()->create(['is_current' => true]);
         Sanctum::actingAs(User::factory()->create());
 
-        $first = MonitoredUser::factory()->create(['name' => 'Home Router', 'group_name' => 'Group A']);
-        $second = MonitoredUser::factory()->create(['name' => 'VLAN20 - Camaymayan', 'group_name' => 'Group B']);
-        $third = MonitoredUser::factory()->create(['name' => 'VLAN30 - Rutor', 'group_name' => 'Group B']);
+        $first = MonitoredUser::factory()->create(['name' => 'Home Router', 'queue_name' => 'Home Router', 'group_name' => 'Group A']);
+        $second = MonitoredUser::factory()->create(['name' => 'VLAN20 - Camaymayan', 'queue_name' => 'VLAN20 - Camaymayan', 'group_name' => 'Group B']);
+        $third = MonitoredUser::factory()->create(['name' => 'VLAN30 - Rutor', 'queue_name' => 'VLAN30 - Rutor', 'group_name' => 'Group B']);
 
         UserSnapshot::factory()->create([
             'monitored_user_id' => $first->id,
@@ -117,5 +117,27 @@ class DashboardUsersTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('meta.per_page', 5)
             ->assertJsonPath('data.0.name', 'VLAN30 - Rutor');
+    }
+
+    public function test_users_endpoint_excludes_retired_group_a_total_queue_even_if_row_exists(): void
+    {
+        BillingCycle::factory()->create(['is_current' => true]);
+        Sanctum::actingAs(User::factory()->create());
+
+        MonitoredUser::factory()->create([
+            'name' => 'GROUP_A_TOTAL',
+            'queue_name' => 'GROUP_A_TOTAL',
+            'is_active' => true,
+        ]);
+        MonitoredUser::factory()->create([
+            'name' => 'Home Router',
+            'queue_name' => 'Home Router',
+            'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/dashboard/users')
+            ->assertOk();
+
+        $this->assertSame(['Home Router'], collect($response->json('data'))->pluck('name')->all());
     }
 }

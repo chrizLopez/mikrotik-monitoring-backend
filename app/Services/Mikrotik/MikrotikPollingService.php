@@ -74,13 +74,8 @@ class MikrotikPollingService
     public function mapQueues(Collection $rawQueues, Collection $users): Collection
     {
         $knownUserQueues = $users->pluck('queue_name')->all();
-        $ignoredQueues = config('mikrotik.excluded_queue_names', []);
 
         foreach ($rawQueues->keys() as $queueName) {
-            if (in_array($queueName, $ignoredQueues, true)) {
-                continue;
-            }
-
             if (! in_array($queueName, $knownUserQueues, true)) {
                 Log::warning('Unmapped MikroTik queue encountered during poll.', [
                     'queue_name' => $queueName,
@@ -165,10 +160,6 @@ class MikrotikPollingService
         $users = MonitoredUser::query()->whereIn('queue_name', $queues->pluck('name')->all())->get()->keyBy('queue_name');
 
         foreach ($queues as $queue) {
-            if (in_array($queue->name, config('mikrotik.excluded_queue_names', []), true)) {
-                continue;
-            }
-
             $user = $users->get($queue->name);
 
             if (! $user) {

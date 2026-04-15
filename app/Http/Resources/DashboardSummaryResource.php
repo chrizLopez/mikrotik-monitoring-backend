@@ -20,6 +20,7 @@ class DashboardSummaryResource extends JsonResource
             'total_isp_traffic_for_range' => $this['total_isp_traffic_for_range'],
             'total_user_traffic_for_range' => $this['total_user_traffic_for_range'],
             'last_poll_timestamp' => $this['last_poll_timestamp'],
+            'network_model' => $this['network_model'],
         ];
     }
 }

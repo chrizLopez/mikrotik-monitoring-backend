@@ -21,8 +21,8 @@ class DashboardAnalyticsTest extends TestCase
     {
         $cycle = BillingCycle::factory()->create(['is_current' => true]);
         Sanctum::actingAs(User::factory()->create());
-        $isp = Isp::factory()->create(['name' => 'Old Starlink', 'interface_name' => 'ether1']);
-        $user = MonitoredUser::factory()->create(['name' => 'Home Router']);
+        $isp = Isp::factory()->create(['name' => 'Gomo', 'interface_name' => 'ether1']);
+        $user = MonitoredUser::factory()->create(['name' => 'Home Router', 'queue_name' => 'Home Router']);
 
         IspSnapshot::factory()->create([
             'isp_id' => $isp->id,
@@ -55,7 +55,8 @@ class DashboardAnalyticsTest extends TestCase
 
         $this->getJson('/api/dashboard/live')
             ->assertOk()
-            ->assertJsonPath('data.isps.0.name', 'Old Starlink')
+            ->assertJsonPath('data.isps.0.name', 'Gomo')
+            ->assertJsonPath('data.isps.0.gateway', '192.168.254.1')
             ->assertJsonPath('data.top_active_users.0.name', 'Home Router');
     }
 
@@ -63,7 +64,7 @@ class DashboardAnalyticsTest extends TestCase
     {
         $cycle = BillingCycle::factory()->create(['is_current' => true]);
         Sanctum::actingAs(User::factory()->create());
-        $isp = Isp::factory()->create(['name' => 'New Starlink', 'interface_name' => 'ether2']);
+        $isp = Isp::factory()->create(['name' => 'Starlink ISP New', 'interface_name' => 'ether2']);
         $user = MonitoredUser::factory()->create(['name' => 'VLAN20 - Camaymayan']);
 
         IspSnapshot::factory()->create([
@@ -89,11 +90,11 @@ class DashboardAnalyticsTest extends TestCase
 
         $this->getJson('/api/dashboard/isps/distribution?range=cycle')
             ->assertOk()
-            ->assertJsonPath('data.items.0.name', 'New Starlink');
+            ->assertJsonPath('data.items.0.name', 'Starlink ISP New');
 
         $this->getJson('/api/dashboard/alerts?range=cycle')
             ->assertOk()
-            ->assertJsonPath('data.health_alerts.0.subject', 'New Starlink');
+            ->assertJsonPath('data.health_alerts.0.subject', 'Starlink ISP New');
     }
 
     public function test_quota_timeline_and_throttling_history_are_derived_from_snapshots(): void

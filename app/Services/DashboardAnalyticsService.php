@@ -26,10 +26,16 @@ class DashboardAnalyticsService
     public function live(int $activeUserLimit = 5): array
     {
         return Cache::remember(sprintf('dashboard:live:%d', $activeUserLimit), now()->addSeconds(15), function () use ($activeUserLimit): array {
+            $wanMetadata = collect(config('dashboard.network_model.wans', []))->keyBy('interface_name');
+
             $isps = $this->dashboardService->currentIspStats()->map(fn (Isp $isp): array => [
                 'id' => $isp->id,
                 'name' => $isp->name,
                 'interface_name' => $isp->interface_name,
+                'gateway' => $wanMetadata->get($isp->interface_name)['gateway'] ?? null,
+                'connection_mark' => $wanMetadata->get($isp->interface_name)['connection_mark'] ?? null,
+                'routing_mark' => $wanMetadata->get($isp->interface_name)['routing_mark'] ?? null,
+                'share_percent_target' => $wanMetadata->get($isp->interface_name)['share_percent'] ?? null,
                 'status' => $isp->status,
                 'current_rx_bps' => (int) ($isp->snapshots->first()?->rx_bps ?? 0),
                 'current_tx_bps' => (int) ($isp->snapshots->first()?->tx_bps ?? 0),
@@ -61,7 +67,7 @@ class DashboardAnalyticsService
     {
         return MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->get()
             ->map(function (MonitoredUser $user): array {
                 $snapshots = $user->snapshots()->latest('recorded_at')->limit(5)->get()->reverse()->values();
@@ -98,7 +104,7 @@ class DashboardAnalyticsService
     {
         return MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->get()
             ->map(function (MonitoredUser $user) use ($preset): array {
                 $usage = $this->snapshotUsageService->computeRangeUsage(
@@ -318,7 +324,7 @@ class DashboardAnalyticsService
         $preset = $this->resolveRange($range);
         $users = $user ? collect([$user]) : MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->get();
 
         $items = $users->map(function (MonitoredUser $entry) use ($preset): array {
@@ -629,7 +635,7 @@ class DashboardAnalyticsService
 
         MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->get()
             ->each(function (MonitoredUser $user) use (&$counts, &$totals, $preset): void {
                 $group = $user->group_name;

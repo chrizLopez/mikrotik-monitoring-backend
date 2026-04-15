@@ -80,6 +80,7 @@ class DashboardService
                 'total_isp_traffic_for_range' => (int) $totalIspTrafficForRange,
                 'total_user_traffic_for_range' => (int) $totalUserTrafficForRange,
                 'last_poll_timestamp' => $lastPoll,
+                'network_model' => config('dashboard.network_model'),
             ];
         });
 
@@ -142,7 +143,7 @@ class DashboardService
 
         $query = MonitoredUser::query()
             ->where('monitored_users.is_active', true)
-            ->where('monitored_users.queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('monitored_users.queue_name', config('mikrotik.user_queue_names', []))
             ->leftJoin('monthly_user_summaries as mus', function ($join) use ($cycle): void {
                 $join->on('mus.monitored_user_id', '=', 'monitored_users.id')
                     ->where('mus.billing_cycle_id', '=', $cycle->id);
@@ -197,7 +198,7 @@ class DashboardService
 
         return MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->get()
             ->map(function (MonitoredUser $user) use ($preset): MonitoredUser {
                 $usage = $this->snapshotUsageService->computeRangeUsage(
@@ -248,7 +249,7 @@ class DashboardService
 
         MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->get()
             ->each(function (MonitoredUser $user) use (&$counts, &$totals, $preset): void {
                 $group = $user->group_name;
@@ -425,7 +426,7 @@ class DashboardService
     {
         return MonitoredUser::query()
             ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->whereIn('queue_name', config('mikrotik.user_queue_names', []))
             ->get()
             ->sum(function (MonitoredUser $user) use ($preset): int {
                 return (int) $this->snapshotUsageService->computeRangeUsage(

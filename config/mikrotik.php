@@ -21,7 +21,6 @@ return [
         'VLAN50 - Yamba',
         'VLAN60 - Piso WiFi',
         'VLAN70 - Olario',
-        'GROUP_A_TOTAL',
     ],
     'user_queue_names' => [
         'Home Router',
@@ -32,9 +31,7 @@ return [
         'VLAN60 - Piso WiFi',
         'VLAN70 - Olario',
     ],
-    'excluded_queue_names' => [
-        'GROUP_A_TOTAL',
-    ],
+    'excluded_queue_names' => [],
     'health_targets' => [
         'ether1' => env('MIKROTIK_ETHER1_HEALTH_TARGET', '1.1.1.1'),
         'ether2' => env('MIKROTIK_ETHER2_HEALTH_TARGET', '8.8.8.8'),

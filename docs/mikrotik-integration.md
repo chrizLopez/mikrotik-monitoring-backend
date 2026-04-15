@@ -14,8 +14,8 @@ How it works:
 
 - `App\Services\Mikrotik\MikrotikClient` wraps `evilfreelancer/routeros-api-php`
 - interfaces polled: `ether1`, `ether2`, `ether4`
-- queues polled: the seven user queues plus `GROUP_A_TOTAL`
-- `GROUP_A_TOTAL` is excluded from `UserSnapshot` persistence because it is an aggregate cap, not a real end user
+- queues polled: the seven live user queues only
+- legacy queues such as `GROUP_A_TOTAL` are not part of monitored queue persistence
 
 Bps fallback:
 
@@ -58,7 +58,7 @@ Supported payload fields:
 Queue payload rules:
 
 - exact match against `monitored_users.queue_name`
-- `GROUP_A_TOTAL` is skipped
+- only the seven live monitored queues are ingested
 - unknown names are logged and ignored
 - `state` becomes `THROTTLED` when pushed `max_limit` matches `monitored_users.throttled_max_limit`
 

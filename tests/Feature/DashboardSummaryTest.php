@@ -44,7 +44,10 @@ class DashboardSummaryTest extends TestCase
             'recorded_at' => $cycle->starts_at->copy()->addMinutes(2),
         ]);
 
-        $monitoredUser = MonitoredUser::factory()->create();
+        $monitoredUser = MonitoredUser::factory()->create([
+            'name' => 'Home Router',
+            'queue_name' => 'Home Router',
+        ]);
         UserSnapshot::factory()->create([
             'monitored_user_id' => $monitoredUser->id,
             'upload_bytes_total' => 1000,
@@ -70,7 +73,11 @@ class DashboardSummaryTest extends TestCase
             ->assertJsonPath('data.total_isp_traffic_this_cycle', 11000)
             ->assertJsonPath('data.total_user_traffic_this_cycle', 126456)
             ->assertJsonPath('data.total_isp_traffic_for_range', 11000)
-            ->assertJsonPath('data.total_user_traffic_for_range', 126456);
+            ->assertJsonPath('data.total_user_traffic_for_range', 126456)
+            ->assertJsonPath('data.network_model.mode', 'shared_equal_pcc')
+            ->assertJsonPath('data.network_model.wans.0.name', 'Gomo')
+            ->assertJsonPath('data.network_model.wans.1.name', 'Starlink ISP New')
+            ->assertJsonPath('data.network_model.wans.2.name', 'Smart Bro ISP');
     }
 
     public function test_summary_endpoint_reuses_short_cache_for_cycle_aggregation(): void
