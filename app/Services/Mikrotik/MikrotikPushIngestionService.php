@@ -7,6 +7,8 @@ use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\UserSnapshot;
+use App\Services\Mikrotik\Contracts\MikrotikClientInterface;
+use App\Services\Mikrotik\Exceptions\MikrotikException;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +18,7 @@ class MikrotikPushIngestionService
 {
     public function __construct(
         protected readonly CounterDeltaCalculator $counterDeltaCalculator,
+        protected readonly MikrotikClientInterface $mikrotikClient,
     ) {
     }
 
@@ -220,6 +223,10 @@ class MikrotikPushIngestionService
 
                 $healthIngested++;
             }
+
+            if ($healthItems === []) {
+                $healthIngested += $this->persistFallbackHealthSnapshots($recordedAt, $routerName);
+            }
         });
 
         Log::info('MikroTik push data ingested successfully.', [
@@ -239,5 +246,58 @@ class MikrotikPushIngestionService
             'health_ingested' => $healthIngested,
             'skipped_queues' => array_values(array_unique($skippedQueues)),
         ];
+    }
+
+    protected function persistFallbackHealthSnapshots(CarbonImmutable $recordedAt, ?string $routerName = null): int
+    {
+        $targets = config('mikrotik.health_targets', []);
+        $pingCount = (int) config('mikrotik.health_ping_count', 3);
+
+        if ($targets === []) {
+            return 0;
+        }
+
+        $isps = Isp::query()
+            ->where('is_active', true)
+            ->whereIn('interface_name', array_keys($targets))
+            ->get();
+
+        $persisted = 0;
+
+        foreach ($isps as $isp) {
+            $target = $targets[$isp->interface_name] ?? null;
+
+            if (! $target) {
+                continue;
+            }
+
+            try {
+                $health = $this->mikrotikClient->pingStats($target, $pingCount);
+            } catch (MikrotikException $exception) {
+                Log::warning('Fallback MikroTik health polling failed during push ingestion.', [
+                    'router_name' => $routerName,
+                    'isp_id' => $isp->id,
+                    'interface_name' => $isp->interface_name,
+                    'ping_target' => $target,
+                    'message' => $exception->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            IspHealthSnapshot::query()->create([
+                'isp_id' => $isp->id,
+                'ping_target' => $target,
+                'latency_ms' => $health['latency_ms'] ?? null,
+                'packet_loss_percent' => $health['packet_loss_percent'] ?? null,
+                'jitter_ms' => $health['jitter_ms'] ?? null,
+                'status' => $health['status'] ?? 'unknown',
+                'recorded_at' => $recordedAt,
+            ]);
+
+            $persisted++;
+        }
+
+        return $persisted;
     }
 }

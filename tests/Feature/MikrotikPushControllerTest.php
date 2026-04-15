@@ -7,8 +7,11 @@ use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\UserSnapshot;
+use App\Services\Mikrotik\Contracts\MikrotikClientInterface;
+use App\Services\Mikrotik\Exceptions\MikrotikConnectionException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
+use Mockery;
 use Tests\TestCase;
 
 class MikrotikPushControllerTest extends TestCase
@@ -39,6 +42,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_valid_payload_is_accepted_and_snapshots_are_created(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
 
         $homeRouter = MonitoredUser::factory()->create([
             'name' => 'Home Router',
@@ -133,6 +137,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_group_a_total_is_not_ingested_as_a_monitored_user(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
         Log::spy();
         MonitoredUser::factory()->create([
             'queue_name' => 'Home Router',
@@ -177,6 +182,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_unknown_queues_and_interfaces_are_logged_and_skipped(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
         Log::spy();
 
         $this->withHeader('X-Mikrotik-Token', 'shared-secret')
@@ -223,6 +229,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_health_snapshots_are_created_from_push_payload(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
 
         $isp = Isp::factory()->create([
             'name' => 'Gomo',
@@ -265,6 +272,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_unknown_health_interfaces_are_logged_and_skipped(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
         Log::spy();
 
         $this->postJson('/api/mikrotik/push?token=shared-secret', [
@@ -294,6 +302,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_throttled_state_is_derived_from_monitored_user_limit(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
 
         $user = MonitoredUser::factory()->create([
             'queue_name' => 'VLAN50 - Yamba',
@@ -321,6 +330,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_interface_snapshots_are_created_from_exact_interface_mapping(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
 
         $isp = Isp::factory()->create([
             'name' => 'Smart Bro ISP',
@@ -347,6 +357,7 @@ class MikrotikPushControllerTest extends TestCase
     public function test_interface_push_derives_bps_from_previous_snapshot(): void
     {
         config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', []);
 
         $isp = Isp::factory()->create([
             'name' => 'Gomo',
@@ -379,5 +390,97 @@ class MikrotikPushControllerTest extends TestCase
         $this->assertNotNull($snapshot);
         $this->assertSame(800, $snapshot->rx_bps);
         $this->assertSame(1200, $snapshot->tx_bps);
+    }
+
+    public function test_fallback_health_snapshots_are_created_when_push_payload_omits_health(): void
+    {
+        config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', [
+            'ether1' => '1.1.1.1',
+            'ether2' => '8.8.8.8',
+        ]);
+        config()->set('mikrotik.health_ping_count', 3);
+
+        Isp::factory()->create([
+            'name' => 'Gomo',
+            'interface_name' => 'ether1',
+        ]);
+        Isp::factory()->create([
+            'name' => 'Starlink ISP New',
+            'interface_name' => 'ether2',
+        ]);
+
+        $client = Mockery::mock(MikrotikClientInterface::class);
+        $client->shouldReceive('pingStats')->once()->with('1.1.1.1', 3)->andReturn([
+            'latency_ms' => 28.5,
+            'packet_loss_percent' => 0.0,
+            'jitter_ms' => 1.2,
+            'status' => 'online',
+        ]);
+        $client->shouldReceive('pingStats')->once()->with('8.8.8.8', 3)->andReturn([
+            'latency_ms' => 42.1,
+            'packet_loss_percent' => 5.0,
+            'jitter_ms' => 6.4,
+            'status' => 'degraded',
+        ]);
+        $this->app->instance(MikrotikClientInterface::class, $client);
+
+        $this->postJson('/api/mikrotik/push?token=shared-secret', [
+            'interfaces' => [
+                ['name' => 'ether1', 'rx_bytes' => 100, 'tx_bytes' => 200],
+            ],
+        ])
+            ->assertOk()
+            ->assertJson([
+                'health_ingested' => 2,
+            ]);
+
+        $this->assertDatabaseCount('isp_health_snapshots', 2);
+        $this->assertDatabaseHas('isp_health_snapshots', [
+            'ping_target' => '1.1.1.1',
+            'status' => 'online',
+        ]);
+        $this->assertDatabaseHas('isp_health_snapshots', [
+            'ping_target' => '8.8.8.8',
+            'status' => 'degraded',
+        ]);
+    }
+
+    public function test_fallback_health_poll_failures_are_logged_without_failing_push_ingestion(): void
+    {
+        config()->set('mikrotik.push_token', 'shared-secret');
+        config()->set('mikrotik.health_targets', [
+            'ether1' => '1.1.1.1',
+        ]);
+        Log::spy();
+
+        Isp::factory()->create([
+            'name' => 'Gomo',
+            'interface_name' => 'ether1',
+        ]);
+
+        $client = Mockery::mock(MikrotikClientInterface::class);
+        $client->shouldReceive('pingStats')->once()->with('1.1.1.1', 3)->andThrow(
+            new MikrotikConnectionException('Unable to connect to MikroTik.')
+        );
+        $this->app->instance(MikrotikClientInterface::class, $client);
+
+        $this->postJson('/api/mikrotik/push?token=shared-secret', [
+            'interfaces' => [
+                ['name' => 'ether1', 'rx_bytes' => 100, 'tx_bytes' => 200],
+            ],
+        ])
+            ->assertOk()
+            ->assertJson([
+                'interfaces_ingested' => 1,
+                'health_ingested' => 0,
+            ]);
+
+        $this->assertDatabaseCount('isp_health_snapshots', 0);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Fallback MikroTik health polling failed during push ingestion.'
+                && $context['interface_name'] === 'ether1'
+                && $context['ping_target'] === '1.1.1.1');
     }
 }
