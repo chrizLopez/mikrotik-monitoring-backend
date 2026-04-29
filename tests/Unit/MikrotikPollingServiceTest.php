@@ -74,7 +74,7 @@ class MikrotikPollingServiceTest extends TestCase
 
     public function test_it_persists_route_status_snapshots_from_interface_running_state(): void
     {
-        $isp = \App\Models\Isp::factory()->create(['interface_name' => 'ether1']);
+        $isp = \App\Models\Isp::factory()->create(['interface_name' => 'ether1 - Starlink']);
         $service = new MikrotikPollingService(
             Mockery::mock(MikrotikClientInterface::class),
             new MikrotikNormalizer(new CounterDeltaCalculator())
@@ -82,7 +82,7 @@ class MikrotikPollingServiceTest extends TestCase
 
         $service->persistInterfaces(collect([
             new \App\Data\Mikrotik\InterfaceStatData(
-                name: 'ether1',
+                name: 'ether1 - Starlink',
                 rxBytesTotal: 1000,
                 txBytesTotal: 2000,
                 rxBps: 8000,
@@ -101,9 +101,9 @@ class MikrotikPollingServiceTest extends TestCase
 
     public function test_it_persists_health_snapshots_from_ping_stats(): void
     {
-        config()->set('mikrotik.health_targets', ['ether1' => '1.1.1.1']);
+        config()->set('mikrotik.health_targets', ['ether1 - Starlink' => '1.1.1.1']);
         config()->set('mikrotik.health_ping_count', 3);
-        $isp = \App\Models\Isp::factory()->create(['interface_name' => 'ether1']);
+        $isp = \App\Models\Isp::factory()->create(['interface_name' => 'ether1 - Starlink']);
         $client = Mockery::mock(MikrotikClientInterface::class);
         $client->shouldReceive('pingStats')->once()->with('1.1.1.1', 3)->andReturn([
             'latency_ms' => 32.5,

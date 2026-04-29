@@ -22,7 +22,7 @@ class DashboardUsersTest extends TestCase
         $monitoredUser = MonitoredUser::factory()->create([
             'name' => 'Home Router',
             'queue_name' => 'Home Router',
-            'group_name' => 'Group A',
+            'group_name' => 'Starlink Group',
         ]);
 
         UserSnapshot::factory()->create([
@@ -54,6 +54,6 @@ class DashboardUsersTest extends TestCase
             ->assertJsonPath('data.0.usage_percent', 0.0)
             ->assertJsonPath('data.0.state', 'THROTTLED')
             ->assertJsonPath('data.0.current_max_limit', '512k/2M')
-            ->assertJsonPath('data.0.group_name', 'Group A');
+            ->assertJsonPath('data.0.group_name', 'Starlink Group');
     }
 }

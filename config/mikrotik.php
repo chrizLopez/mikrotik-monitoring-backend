@@ -9,9 +9,9 @@ return [
     'use_ssl' => filter_var(env('MIKROTIK_USE_SSL', false), FILTER_VALIDATE_BOOL),
     'timeout' => (int) env('MIKROTIK_TIMEOUT', 5),
     'polled_interfaces' => [
-        'ether1',
-        'ether2',
-        'ether4',
+        'ether1 - Starlink',
+        'ether2 - SmartBro A',
+        'ether4 - SmartBro B',
     ],
     'polled_queue_names' => [
         'Home Router',
@@ -36,9 +36,9 @@ return [
         'GROUP_A_TOTAL',
     ],
     'health_targets' => [
-        'ether1' => env('MIKROTIK_ETHER1_HEALTH_TARGET', '1.1.1.1'),
-        'ether2' => env('MIKROTIK_ETHER2_HEALTH_TARGET', '8.8.8.8'),
-        'ether4' => env('MIKROTIK_ETHER4_HEALTH_TARGET', '8.8.4.4'),
+        'ether1 - Starlink' => env('MIKROTIK_ETHER1_HEALTH_TARGET', '1.1.1.1'),
+        'ether2 - SmartBro A' => env('MIKROTIK_ETHER2_HEALTH_TARGET', '8.8.8.8'),
+        'ether4 - SmartBro B' => env('MIKROTIK_ETHER4_HEALTH_TARGET', '8.8.4.4'),
     ],
     'health_ping_count' => (int) env('MIKROTIK_HEALTH_PING_COUNT', 3),
 ];

@@ -21,8 +21,8 @@ class DashboardGroupsAndIspsTest extends TestCase
         $cycle = BillingCycle::factory()->create(['is_current' => true]);
         Sanctum::actingAs(User::factory()->create());
 
-        $groupA = MonitoredUser::factory()->create(['group_name' => 'Group A']);
-        $groupB = MonitoredUser::factory()->create(['group_name' => 'Group B']);
+        $groupA = MonitoredUser::factory()->create(['group_name' => 'Starlink Group']);
+        $groupB = MonitoredUser::factory()->create(['group_name' => 'Smart Group']);
 
         UserSnapshot::factory()->create([
             'monitored_user_id' => $groupA->id,
@@ -55,9 +55,9 @@ class DashboardGroupsAndIspsTest extends TestCase
 
         $this->getJson('/api/dashboard/groups/usage?range=cycle')
             ->assertOk()
-            ->assertJsonPath('data.0.group_name', 'Group A')
+            ->assertJsonPath('data.0.group_name', 'Starlink Group')
             ->assertJsonPath('data.0.total_bytes', 3300)
-            ->assertJsonPath('data.1.group_name', 'Group B')
+            ->assertJsonPath('data.1.group_name', 'Smart Group')
             ->assertJsonPath('data.1.total_bytes', 4100);
     }
 
@@ -66,7 +66,7 @@ class DashboardGroupsAndIspsTest extends TestCase
         $cycle = BillingCycle::factory()->create(['is_current' => true]);
         Sanctum::actingAs(User::factory()->create());
 
-        $isp = Isp::factory()->create(['interface_name' => 'ether1']);
+        $isp = Isp::factory()->create(['interface_name' => 'ether1 - Starlink']);
 
         IspSnapshot::factory()->create([
             'isp_id' => $isp->id,
@@ -85,7 +85,7 @@ class DashboardGroupsAndIspsTest extends TestCase
             'recorded_at' => $cycle->starts_at->copy()->addMinutes(2),
         ]);
 
-        $this->getJson('/api/dashboard/isps/ether1/history?range=cycle')
+        $this->getJson('/api/dashboard/isps/ether1%20-%20Starlink/history?range=cycle')
             ->assertOk()
             ->assertJsonPath('data.totals.download_bytes', 600)
             ->assertJsonPath('data.totals.upload_bytes', 900)

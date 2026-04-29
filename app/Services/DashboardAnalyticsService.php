@@ -602,8 +602,9 @@ class DashboardAnalyticsService
 
     private function groupUsageForPreset(RangePreset $preset): array
     {
-        $totals = ['Group A' => 0, 'Group B' => 0];
-        $counts = ['Group A' => 0, 'Group B' => 0];
+        $groups = collect($this->dashboardService->groupDefinitions())->keyBy('label');
+        $totals = $groups->mapWithKeys(fn (array $group): array => [$group['label'] => 0])->all();
+        $counts = $groups->mapWithKeys(fn (array $group): array => [$group['label'] => 0])->all();
 
         MonitoredUser::query()
             ->where('is_active', true)
@@ -627,10 +628,17 @@ class DashboardAnalyticsService
                 $counts[$group]++;
             });
 
-        return [
-            ['group_name' => 'Group A', 'total_bytes' => $totals['Group A'], 'user_count' => $counts['Group A']],
-            ['group_name' => 'Group B', 'total_bytes' => $totals['Group B'], 'user_count' => $counts['Group B']],
-        ];
+        return $groups
+            ->map(fn (array $group): array => [
+                'group_key' => $group['key'],
+                'group_name' => $group['label'],
+                'policy' => $group['policy'],
+                'subnets' => $group['subnets'],
+                'total_bytes' => $totals[$group['label']] ?? 0,
+                'user_count' => $counts[$group['label']] ?? 0,
+            ])
+            ->values()
+            ->all();
     }
 
     private function serializeRange(RangePreset $preset): array

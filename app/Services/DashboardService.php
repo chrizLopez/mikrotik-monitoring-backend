@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BillingCycle;
 use App\Models\Isp;
+use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\MonthlyUserSummary;
 use App\Services\Support\RangePreset;
@@ -33,6 +34,9 @@ class DashboardService
         $lastPoll = collect([$latestUserPoll, $latestIspPoll])->filter()->sort()->last();
         $totalUserTrafficThisCycle = (int) $summaries->sum('total_bytes');
         $totalIspTrafficThisCycle = $this->usageAggregationService->totalIspTrafficForCycle($cycle);
+        $groupDefinitions = $this->groupDefinitions();
+        $starlinkUsage = $this->starlinkUsage($cycle);
+        $smartbroTotal = $this->smartbroTotalUsage($cycle);
 
         $totalUserTrafficForRange = $preset->key === 'cycle'
             ? $totalUserTrafficThisCycle
@@ -82,6 +86,10 @@ class DashboardService
             'total_isp_traffic_for_range' => (int) $totalIspTrafficForRange,
             'total_user_traffic_for_range' => (int) $totalUserTrafficForRange,
             'last_poll_timestamp' => $lastPoll,
+            'group_policies' => array_values($groupDefinitions),
+            'starlink_usage' => $starlinkUsage,
+            'smartbro_total' => $smartbroTotal,
+            'distribution_note' => config('dashboard.distribution_note'),
         ];
     }
 
@@ -166,6 +174,7 @@ class DashboardService
     {
         $cycle = $this->resolveCurrentCycleWithFreshSummaries();
         $preset = $this->rangeService->resolve($range, $cycle);
+        $groups = collect($this->groupDefinitions())->keyBy('label');
 
         if ($preset->key === 'cycle') {
             $summaries = MonthlyUserSummary::query()
@@ -176,22 +185,21 @@ class DashboardService
                 ->get()
                 ->keyBy('group_name');
 
-            return [
-                [
-                    'group_name' => 'Group A',
-                    'total_bytes' => (int) ($summaries['Group A']->total_bytes ?? 0),
-                    'user_count' => (int) ($summaries['Group A']->user_count ?? 0),
-                ],
-                [
-                    'group_name' => 'Group B',
-                    'total_bytes' => (int) ($summaries['Group B']->total_bytes ?? 0),
-                    'user_count' => (int) ($summaries['Group B']->user_count ?? 0),
-                ],
-            ];
+            return $groups
+                ->map(fn (array $group): array => [
+                    'group_key' => $group['key'],
+                    'group_name' => $group['label'],
+                    'policy' => $group['policy'],
+                    'subnets' => $group['subnets'],
+                    'total_bytes' => (int) ($summaries[$group['label']]->total_bytes ?? 0),
+                    'user_count' => (int) ($summaries[$group['label']]->user_count ?? 0),
+                ])
+                ->values()
+                ->all();
         }
 
-        $totals = ['Group A' => 0, 'Group B' => 0];
-        $counts = ['Group A' => 0, 'Group B' => 0];
+        $totals = $groups->mapWithKeys(fn (array $group): array => [$group['label'] => 0])->all();
+        $counts = $groups->mapWithKeys(fn (array $group): array => [$group['label'] => 0])->all();
 
         MonitoredUser::query()
             ->where('is_active', true)
@@ -215,10 +223,168 @@ class DashboardService
                 $counts[$group]++;
             });
 
+        return $groups
+            ->map(fn (array $group): array => [
+                'group_key' => $group['key'],
+                'group_name' => $group['label'],
+                'policy' => $group['policy'],
+                'subnets' => $group['subnets'],
+                'total_bytes' => $totals[$group['label']] ?? 0,
+                'user_count' => $counts[$group['label']] ?? 0,
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function groupDefinitions(): array
+    {
+        return collect(config('dashboard.user_groups', []))
+            ->map(fn (array $group): array => [
+                'key' => $group['key'],
+                'label' => $group['label'],
+                'subnets' => $group['subnets'] ?? [],
+                'policy' => $group['policy'] ?? [],
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function starlinkUsage(BillingCycle $cycle): array
+    {
+        $starlinkConfig = config('dashboard.isps.starlink', []);
+        $isp = Isp::query()
+            ->where('is_active', true)
+            ->where('interface_name', $starlinkConfig['interface'] ?? '')
+            ->first();
+        $capBytes = (int) (($starlinkConfig['monthly_cap_gb'] ?? 0) * 1024 * 1024 * 1024);
+
+        if (! $isp) {
+            return [
+                'label' => $starlinkConfig['label'] ?? 'Starlink',
+                'used_bytes' => 0,
+                'cap_bytes' => $capBytes,
+                'usage_percent' => 0,
+                'average_daily_bytes' => 0,
+                'projected_monthly_bytes' => 0,
+                'days_elapsed' => 0,
+                'days_in_month' => 0,
+                'daily_points' => [],
+                'thresholds' => collect(config('dashboard.starlink_warning_thresholds', []))
+                    ->map(fn (int $threshold): array => ['percent' => $threshold, 'reached' => false])
+                    ->values()
+                    ->all(),
+            ];
+        }
+
+        $preset = $this->rangeService->resolve('cycle', $cycle);
+        $usage = $this->snapshotUsageService->computeRangeUsage(
+            $isp->snapshots(),
+            $preset->start,
+            $preset->end,
+            ['rx_bytes_total', 'tx_bytes_total'],
+            false,
+        );
+        $usedBytes = (int) $usage['total_bytes'];
+        $timezone = config('dashboard.billing_cycle_timezone', config('app.timezone', 'UTC'));
+        $now = now($timezone);
+        $daysElapsed = max(1, (int) $now->day);
+        $daysInMonth = (int) $now->daysInMonth;
+        $averageDailyBytes = (int) round($usedBytes / $daysElapsed);
+        $projectedMonthlyBytes = $averageDailyBytes * $daysInMonth;
+        $usagePercent = $capBytes > 0 ? round(($usedBytes / $capBytes) * 100, 2) : 0.0;
+        $dailyPoints = $this->dailyIspUsage($isp, $preset);
+
         return [
-            ['group_name' => 'Group A', 'total_bytes' => $totals['Group A'], 'user_count' => $counts['Group A']],
-            ['group_name' => 'Group B', 'total_bytes' => $totals['Group B'], 'user_count' => $counts['Group B']],
+            'label' => $starlinkConfig['label'] ?? $isp->name,
+            'used_bytes' => $usedBytes,
+            'cap_bytes' => $capBytes,
+            'usage_percent' => $usagePercent,
+            'average_daily_bytes' => $averageDailyBytes,
+            'projected_monthly_bytes' => $projectedMonthlyBytes,
+            'days_elapsed' => $daysElapsed,
+            'days_in_month' => $daysInMonth,
+            'daily_points' => $dailyPoints,
+            'thresholds' => collect(config('dashboard.starlink_warning_thresholds', []))
+                ->map(fn (int $threshold): array => ['percent' => $threshold, 'reached' => $usagePercent >= $threshold])
+                ->values()
+                ->all(),
         ];
+    }
+
+    private function smartbroTotalUsage(BillingCycle $cycle): array
+    {
+        $preset = $this->rangeService->resolve('cycle', $cycle);
+        $configs = collect(config('dashboard.isps', []))
+            ->only(['smart_a', 'smart_b'])
+            ->values();
+
+        $items = $configs->map(function (array $config) use ($preset): array {
+            $isp = Isp::query()
+                ->where('is_active', true)
+                ->where('interface_name', $config['interface'] ?? '')
+                ->first();
+
+            if (! $isp) {
+                return [
+                    'label' => $config['label'],
+                    'used_bytes' => 0,
+                ];
+            }
+
+            $usage = $this->snapshotUsageService->computeRangeUsage(
+                $isp->snapshots(),
+                $preset->start,
+                $preset->end,
+                ['rx_bytes_total', 'tx_bytes_total'],
+                false,
+            );
+
+            return [
+                'label' => $config['label'],
+                'used_bytes' => (int) $usage['total_bytes'],
+            ];
+        })->values();
+
+        return [
+            'label' => 'SmartBro Total',
+            'used_bytes' => (int) $items->sum('used_bytes'),
+            'items' => $items->all(),
+        ];
+    }
+
+    private function dailyIspUsage(Isp $isp, RangePreset $preset): array
+    {
+        $points = [];
+        $previous = $isp->snapshots()
+            ->where('recorded_at', '<', $preset->start)
+            ->orderByDesc('recorded_at')
+            ->first();
+
+        $isp->snapshots()
+            ->whereBetween('recorded_at', [$preset->start, $preset->end])
+            ->orderBy('recorded_at')
+            ->get()
+            ->each(function (IspSnapshot $snapshot) use (&$points, &$previous): void {
+                $bucket = CarbonImmutable::instance($snapshot->recorded_at)->startOfDay()->toDateString();
+                $delta = $this->snapshotUsageService->sumPositiveDeltasFromSnapshots(
+                    collect([$snapshot]),
+                    ['rx_bytes_total', 'tx_bytes_total'],
+                    $previous,
+                    false,
+                );
+
+                if (! isset($points[$bucket])) {
+                    $points[$bucket] = [
+                        'date' => $bucket,
+                        'total_bytes' => 0,
+                    ];
+                }
+
+                $points[$bucket]['total_bytes'] += (int) (($delta['rx_bytes_total'] ?? 0) + ($delta['tx_bytes_total'] ?? 0));
+                $previous = $snapshot;
+            });
+
+        return array_values($points);
     }
 
     public function ispHistory(Isp $isp, string $range): array

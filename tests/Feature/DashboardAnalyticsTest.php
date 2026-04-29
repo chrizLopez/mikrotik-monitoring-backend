@@ -21,7 +21,7 @@ class DashboardAnalyticsTest extends TestCase
     {
         $cycle = BillingCycle::factory()->create(['is_current' => true]);
         Sanctum::actingAs(User::factory()->create());
-        $isp = Isp::factory()->create(['name' => 'Old Starlink', 'interface_name' => 'ether1']);
+        $isp = Isp::factory()->create(['name' => 'Starlink', 'interface_name' => 'ether1 - Starlink']);
         $user = MonitoredUser::factory()->create(['name' => 'Home Router']);
 
         IspSnapshot::factory()->create([
@@ -55,7 +55,7 @@ class DashboardAnalyticsTest extends TestCase
 
         $this->getJson('/api/dashboard/live')
             ->assertOk()
-            ->assertJsonPath('data.isps.0.name', 'Old Starlink')
+            ->assertJsonPath('data.isps.0.name', 'Starlink')
             ->assertJsonPath('data.top_active_users.0.name', 'Home Router');
     }
 
@@ -63,7 +63,7 @@ class DashboardAnalyticsTest extends TestCase
     {
         $cycle = BillingCycle::factory()->create(['is_current' => true]);
         Sanctum::actingAs(User::factory()->create());
-        $isp = Isp::factory()->create(['name' => 'New Starlink', 'interface_name' => 'ether2']);
+        $isp = Isp::factory()->create(['name' => 'SmartBro A', 'interface_name' => 'ether2 - SmartBro A']);
         $user = MonitoredUser::factory()->create(['name' => 'VLAN20 - Camaymayan']);
 
         IspSnapshot::factory()->create([
@@ -89,11 +89,11 @@ class DashboardAnalyticsTest extends TestCase
 
         $this->getJson('/api/dashboard/isps/distribution?range=cycle')
             ->assertOk()
-            ->assertJsonPath('data.items.0.name', 'New Starlink');
+            ->assertJsonPath('data.items.0.name', 'SmartBro A');
 
         $this->getJson('/api/dashboard/alerts?range=cycle')
             ->assertOk()
-            ->assertJsonPath('data.health_alerts.0.subject', 'New Starlink');
+            ->assertJsonPath('data.health_alerts.0.subject', 'SmartBro A');
     }
 
     public function test_quota_timeline_and_throttling_history_are_derived_from_snapshots(): void

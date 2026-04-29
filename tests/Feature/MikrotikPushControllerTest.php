@@ -51,12 +51,12 @@ class MikrotikPushControllerTest extends TestCase
             'throttled_max_limit' => '512k/2M',
         ]);
         $ether1 = Isp::factory()->create([
-            'name' => 'Old Starlink',
-            'interface_name' => 'ether1',
+            'name' => 'Starlink',
+            'interface_name' => 'ether1 - Starlink',
         ]);
         $ether2 = Isp::factory()->create([
-            'name' => 'New Starlink',
-            'interface_name' => 'ether2',
+            'name' => 'SmartBro A',
+            'interface_name' => 'ether2 - SmartBro A',
         ]);
 
         $payload = [
@@ -78,12 +78,12 @@ class MikrotikPushControllerTest extends TestCase
             ],
             'interfaces' => [
                 [
-                    'name' => 'ether1',
+                    'name' => 'ether1 - Starlink',
                     'rx_bytes' => 123456789,
                     'tx_bytes' => 987654321,
                 ],
                 [
-                    'name' => 'ether2',
+                    'name' => 'ether2 - SmartBro A',
                     'rx_bytes' => 5555,
                     'tx_bytes' => 6666,
                 ],
@@ -220,14 +220,14 @@ class MikrotikPushControllerTest extends TestCase
         config()->set('mikrotik.push_token', 'shared-secret');
 
         $isp = Isp::factory()->create([
-            'name' => 'Old Starlink',
-            'interface_name' => 'ether1',
+            'name' => 'Starlink',
+            'interface_name' => 'ether1 - Starlink',
         ]);
 
         $this->postJson('/api/mikrotik/push?token=shared-secret', [
             'health' => [
                 [
-                    'name' => 'ether1',
+                    'name' => 'ether1 - Starlink',
                     'ping_target' => '1.1.1.1',
                     'latency_ms' => 24.5,
                     'packet_loss_percent' => 0,
@@ -318,14 +318,14 @@ class MikrotikPushControllerTest extends TestCase
         config()->set('mikrotik.push_token', 'shared-secret');
 
         $isp = Isp::factory()->create([
-            'name' => 'SmartBro',
-            'interface_name' => 'ether4',
+            'name' => 'SmartBro B',
+            'interface_name' => 'ether4 - SmartBro B',
         ]);
 
         $this->postJson('/api/mikrotik/push?token=shared-secret', [
             'interfaces' => [
                 [
-                    'name' => 'ether4',
+                    'name' => 'ether4 - SmartBro B',
                     'rx_bytes' => 7777,
                     'tx_bytes' => 8888,
                 ],
@@ -344,8 +344,8 @@ class MikrotikPushControllerTest extends TestCase
         config()->set('mikrotik.push_token', 'shared-secret');
 
         $isp = Isp::factory()->create([
-            'name' => 'Old Starlink',
-            'interface_name' => 'ether1',
+            'name' => 'Starlink',
+            'interface_name' => 'ether1 - Starlink',
         ]);
 
         IspSnapshot::factory()->create([
@@ -359,7 +359,7 @@ class MikrotikPushControllerTest extends TestCase
             'sent_at' => '2026-04-05 10:00:10',
             'interfaces' => [
                 [
-                    'name' => 'ether1',
+                    'name' => 'ether1 - Starlink',
                     'rx_bytes' => 2000,
                     'tx_bytes' => 3500,
                 ],
