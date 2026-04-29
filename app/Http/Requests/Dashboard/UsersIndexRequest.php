@@ -8,7 +8,7 @@ class UsersIndexRequest extends RangeRequest
     {
         return parent::rules() + [
             'search' => ['nullable', 'string', 'max:100'],
-            'group' => ['nullable', 'in:GROUP_A,GROUP_B'],
+            'group' => ['nullable', 'in:STARLINK_GROUP,SMART_GROUP'],
             'state' => ['nullable', 'in:NORMAL,THROTTLED'],
             'sort' => ['nullable', 'in:name,used_bytes,remaining_quota,usage_percent,last_updated'],
             'direction' => ['nullable', 'in:asc,desc'],
@@ -27,8 +27,8 @@ class UsersIndexRequest extends RangeRequest
     public function group(): ?string
     {
         return match ($this->string('group')->toString()) {
-            'GROUP_A' => config('dashboard.group_names.A', 'Group A'),
-            'GROUP_B' => config('dashboard.group_names.B', 'Group B'),
+            'STARLINK_GROUP' => 'Starlink Group',
+            'SMART_GROUP' => 'Smart Group',
             default => null,
         };
     }
