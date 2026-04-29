@@ -573,11 +573,19 @@ class DashboardService
     public function resolveCurrentCycleWithFreshSummaries(): BillingCycle
     {
         $cycle = $this->billingCycleService->resolveCurrent();
-        $summaryCount = MonthlyUserSummary::query()
+        $summaryBase = MonthlyUserSummary::query()
             ->where('billing_cycle_id', $cycle->id)
-            ->count();
+            ->selectRaw('COUNT(*) as summary_count')
+            ->selectRaw('MAX(last_snapshot_at) as latest_summary_snapshot_at')
+            ->first();
+        $latestUserSnapshotAt = $this->latestSnapshotService->latestUserSnapshots()->max('recorded_at');
+        $summaryCount = (int) ($summaryBase?->summary_count ?? 0);
+        $latestSummarySnapshotAt = $summaryBase?->latest_summary_snapshot_at;
 
-        if ($summaryCount === 0) {
+        if (
+            $summaryCount === 0
+            || ($latestUserSnapshotAt !== null && ($latestSummarySnapshotAt === null || $latestUserSnapshotAt->gt($latestSummarySnapshotAt)))
+        ) {
             $this->usageAggregationService->aggregateCycle($cycle);
         }
 
