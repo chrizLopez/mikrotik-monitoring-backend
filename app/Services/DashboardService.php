@@ -12,11 +12,15 @@ use App\Services\Support\RangeService;
 use App\Services\Support\SnapshotUsageService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
     public function __construct(
         private readonly BillingCycleService $billingCycleService,
+        private readonly LatestSnapshotService $latestSnapshotService,
         private readonly UsageAggregationService $usageAggregationService,
         private readonly RangeService $rangeService,
         private readonly SnapshotUsageService $snapshotUsageService,
@@ -27,77 +31,76 @@ class DashboardService
     {
         $cycle = $this->resolveCurrentCycleWithFreshSummaries();
         $preset = $this->rangeService->resolve($range, $cycle);
-        $summaries = MonthlyUserSummary::query()->whereBelongsTo($cycle)->get();
-        $isps = $this->currentIspStats();
-        $latestUserPoll = $summaries->max('last_snapshot_at');
-        $latestIspPoll = $isps->max(fn (Isp $isp) => $isp->snapshots->first()?->recorded_at);
-        $lastPoll = collect([$latestUserPoll, $latestIspPoll])->filter()->sort()->last();
-        $totalUserTrafficThisCycle = (int) $summaries->sum('total_bytes');
-        $totalIspTrafficThisCycle = $this->usageAggregationService->totalIspTrafficForCycle($cycle);
-        $groupDefinitions = $this->groupDefinitions();
-        $starlinkUsage = $this->starlinkUsage($cycle);
-        $smartbroTotal = $this->smartbroTotalUsage($cycle);
+        $summaryCacheKey = sprintf('dashboard:summary:%s:%s', $cycle->id, $preset->key);
 
-        $totalUserTrafficForRange = $preset->key === 'cycle'
-            ? $totalUserTrafficThisCycle
-            : MonitoredUser::query()
+        $summary = Cache::remember($summaryCacheKey, now()->addSeconds(30), function () use ($cycle, $preset): array {
+            $summaryBase = MonthlyUserSummary::query()
+                ->where('billing_cycle_id', $cycle->id)
+                ->selectRaw('COUNT(*) as total_users')
+                ->selectRaw("SUM(CASE WHEN state = 'THROTTLED' THEN 1 ELSE 0 END) as throttled_users")
+                ->selectRaw('COALESCE(SUM(total_bytes), 0) as total_user_traffic')
+                ->selectRaw('MAX(last_snapshot_at) as last_user_poll')
+                ->first();
+
+            $latestIspPoll = $this->latestSnapshotService->latestIspSnapshots()->max('recorded_at');
+            $activeIspCount = Isp::query()
                 ->where('is_active', true)
-                ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
-                ->get()
-                ->sum(function (MonitoredUser $user) use ($preset): int {
-                    $usage = $this->snapshotUsageService->computeRangeUsage(
-                        $user->snapshots(),
-                        $preset->start,
-                        $preset->end,
-                        ['upload_bytes_total', 'download_bytes_total'],
-                    );
+                ->whereExists(function ($query): void {
+                    $query->selectRaw('1')
+                        ->from('route_status_snapshots as rss')
+                        ->whereColumn('rss.isp_id', 'isps.id')
+                        ->whereRaw('rss.recorded_at = (select max(recorded_at) from route_status_snapshots where isp_id = isps.id)')
+                        ->where('rss.status', 'online');
+                })
+                ->count();
 
-                    return (int) $usage['total_bytes'];
-                });
+            $totalUserTrafficThisCycle = (int) ($summaryBase?->total_user_traffic ?? 0);
+            $totalIspTrafficThisCycle = Cache::remember(
+                sprintf('dashboard:isp-cycle-total:%s', $cycle->id),
+                now()->addSeconds(30),
+                fn (): int => $this->usageAggregationService->totalIspTrafficForCycle($cycle),
+            );
 
-        $totalIspTrafficForRange = $preset->key === 'cycle'
-            ? $totalIspTrafficThisCycle
-            : Isp::query()
-                ->where('is_active', true)
-                ->get()
-                ->sum(function (Isp $isp) use ($preset): int {
-                    $usage = $this->snapshotUsageService->computeRangeUsage(
-                        $isp->snapshots(),
-                        $preset->start,
-                        $preset->end,
-                        ['rx_bytes_total', 'tx_bytes_total'],
-                        false,
-                    );
+            $totalUserTrafficForRange = $preset->key === 'cycle'
+                ? $totalUserTrafficThisCycle
+                : $this->sumUserTrafficForPreset($preset);
 
-                    return (int) $usage['total_bytes'];
-                });
+            $totalIspTrafficForRange = $preset->key === 'cycle'
+                ? $totalIspTrafficThisCycle
+                : $this->sumIspTrafficForPreset($preset);
+
+            $lastPoll = collect([$summaryBase?->last_user_poll, $latestIspPoll])->filter()->sort()->last();
+
+            return [
+                'range' => $preset->key,
+                'total_monitored_users' => (int) ($summaryBase?->total_users ?? 0),
+                'throttled_user_count' => (int) ($summaryBase?->throttled_users ?? 0),
+                'active_isp_count' => $activeIspCount,
+                'total_isp_traffic_this_cycle' => $totalIspTrafficThisCycle,
+                'total_user_traffic_this_cycle' => $totalUserTrafficThisCycle,
+                'total_isp_traffic_for_range' => (int) $totalIspTrafficForRange,
+                'total_user_traffic_for_range' => (int) $totalUserTrafficForRange,
+                'last_poll_timestamp' => $lastPoll,
+            ];
+        });
 
         return [
-            'range' => $preset->key,
+            ...$summary,
             'billing_cycle' => $cycle,
-            'total_monitored_users' => MonitoredUser::query()
-                ->where('is_active', true)
-                ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
-                ->count(),
-            'throttled_user_count' => $summaries->where('state', 'THROTTLED')->count(),
-            'active_isp_count' => $isps->where('status', 'online')->count(),
-            'total_isp_traffic_this_cycle' => $totalIspTrafficThisCycle,
-            'total_user_traffic_this_cycle' => $totalUserTrafficThisCycle,
-            'total_isp_traffic_for_range' => (int) $totalIspTrafficForRange,
-            'total_user_traffic_for_range' => (int) $totalUserTrafficForRange,
-            'last_poll_timestamp' => $lastPoll,
-            'group_policies' => array_values($groupDefinitions),
-            'starlink_usage' => $starlinkUsage,
-            'smartbro_total' => $smartbroTotal,
+            'group_policies' => array_values($this->groupDefinitions()),
+            'starlink_usage' => $this->starlinkUsage($cycle),
+            'smartbro_total' => $this->smartbroTotalUsage($cycle),
             'distribution_note' => config('dashboard.distribution_note'),
         ];
     }
 
+    public function currentIspStat(Isp $isp): Isp
+    {
+        return $this->currentIspStats()->firstWhere('id', $isp->id) ?? $isp;
+    }
+
     public function currentIspStats(): Collection
     {
-        $cycle = $this->billingCycleService->resolveCurrent();
-        $preset = $this->rangeService->resolve('cycle', $cycle);
-
         return Isp::query()
             ->where('is_active', true)
             ->with([
@@ -106,34 +109,81 @@ class DashboardService
             ])
             ->orderByRaw('display_order is null')
             ->orderBy('display_order')
-            ->get()
-            ->map(function (Isp $isp) use ($preset): Isp {
-                $usage = $this->snapshotUsageService->computeRangeUsage(
-                    $isp->snapshots(),
-                    $preset->start,
-                    $preset->end,
-                    ['rx_bytes_total', 'tx_bytes_total'],
-                    false,
-                );
-
-                $isp->setAttribute('range_usage', $usage);
-
-                return $isp;
-            });
+            ->get();
     }
 
-    public function currentUserStats(): Collection
+    public function currentUserStat(MonitoredUser $user): MonitoredUser
     {
         $cycle = $this->resolveCurrentCycleWithFreshSummaries();
 
         return MonitoredUser::query()
-            ->where('is_active', true)
-            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
-            ->with([
-                'monthlySummaries' => fn ($query) => $query->whereBelongsTo($cycle),
-            ])
-            ->orderBy('name')
-            ->get();
+            ->whereKey($user->id)
+            ->leftJoin('monthly_user_summaries as mus', function ($join) use ($cycle): void {
+                $join->on('mus.monitored_user_id', '=', 'monitored_users.id')
+                    ->where('mus.billing_cycle_id', '=', $cycle->id);
+            })
+            ->select('monitored_users.*')
+            ->selectRaw('COALESCE(mus.total_bytes, 0) as total_bytes')
+            ->selectRaw('COALESCE(mus.upload_bytes, 0) as upload_bytes')
+            ->selectRaw('COALESCE(mus.download_bytes, 0) as download_bytes')
+            ->selectRaw('COALESCE(mus.quota_bytes, monitored_users.monthly_quota_bytes) as quota_bytes')
+            ->selectRaw('COALESCE(mus.remaining_bytes, monitored_users.monthly_quota_bytes) as remaining_bytes')
+            ->selectRaw('COALESCE(mus.usage_percent, 0) as usage_percent')
+            ->selectRaw("COALESCE(mus.state, 'NORMAL') as state")
+            ->selectRaw('mus.current_max_limit as current_max_limit')
+            ->selectRaw('mus.last_snapshot_at as last_snapshot_at')
+            ->firstOrFail();
+    }
+
+    public function paginatedUserStats(
+        ?string $search = null,
+        ?string $group = null,
+        ?string $state = null,
+        string $sort = 'name',
+        string $direction = 'desc',
+        int $perPage = 15,
+    ): LengthAwarePaginator {
+        $cycle = $this->resolveCurrentCycleWithFreshSummaries();
+
+        $query = MonitoredUser::query()
+            ->where('monitored_users.is_active', true)
+            ->where('monitored_users.queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->leftJoin('monthly_user_summaries as mus', function ($join) use ($cycle): void {
+                $join->on('mus.monitored_user_id', '=', 'monitored_users.id')
+                    ->where('mus.billing_cycle_id', '=', $cycle->id);
+            })
+            ->select('monitored_users.*')
+            ->selectRaw('COALESCE(mus.total_bytes, 0) as total_bytes')
+            ->selectRaw('COALESCE(mus.upload_bytes, 0) as upload_bytes')
+            ->selectRaw('COALESCE(mus.download_bytes, 0) as download_bytes')
+            ->selectRaw('COALESCE(mus.quota_bytes, monitored_users.monthly_quota_bytes) as quota_bytes')
+            ->selectRaw('COALESCE(mus.remaining_bytes, monitored_users.monthly_quota_bytes) as remaining_bytes')
+            ->selectRaw('COALESCE(mus.usage_percent, 0) as usage_percent')
+            ->selectRaw("COALESCE(mus.state, 'NORMAL') as state")
+            ->selectRaw('mus.current_max_limit as current_max_limit')
+            ->selectRaw('mus.last_snapshot_at as last_snapshot_at');
+
+        if ($search !== null) {
+            $query->where('monitored_users.name', 'like', '%'.$search.'%');
+        }
+
+        if ($group !== null) {
+            $query->where('monitored_users.group_name', $group);
+        }
+
+        if ($state !== null) {
+            $query->whereRaw("COALESCE(mus.state, 'NORMAL') = ?", [$state]);
+        }
+
+        match ($sort) {
+            'used_bytes' => $query->orderBy('total_bytes', $direction)->orderBy('monitored_users.name'),
+            'remaining_quota' => $query->orderBy('remaining_bytes', $direction)->orderBy('monitored_users.name'),
+            'usage_percent' => $query->orderBy('usage_percent', $direction)->orderBy('monitored_users.name'),
+            'last_updated' => $query->orderBy('last_snapshot_at', $direction)->orderBy('monitored_users.name'),
+            default => $query->orderBy('monitored_users.name', $direction === 'desc' ? 'desc' : 'asc'),
+        };
+
+        return $query->paginate($perPage)->withQueryString();
     }
 
     public function topUsers(string $range, int $limit): Collection
@@ -523,8 +573,46 @@ class DashboardService
     public function resolveCurrentCycleWithFreshSummaries(): BillingCycle
     {
         $cycle = $this->billingCycleService->resolveCurrent();
-        $this->usageAggregationService->aggregateCycle($cycle);
+        $summaryCount = MonthlyUserSummary::query()
+            ->where('billing_cycle_id', $cycle->id)
+            ->count();
+
+        if ($summaryCount === 0) {
+            $this->usageAggregationService->aggregateCycle($cycle);
+        }
 
         return $cycle;
+    }
+
+    private function sumUserTrafficForPreset(RangePreset $preset): int
+    {
+        return MonitoredUser::query()
+            ->where('is_active', true)
+            ->where('queue_name', '!=', config('dashboard.group_totals_queue'))
+            ->get()
+            ->sum(function (MonitoredUser $user) use ($preset): int {
+                return (int) $this->snapshotUsageService->computeRangeUsage(
+                    $user->snapshots(),
+                    $preset->start,
+                    $preset->end,
+                    ['upload_bytes_total', 'download_bytes_total'],
+                )['total_bytes'];
+            });
+    }
+
+    private function sumIspTrafficForPreset(RangePreset $preset): int
+    {
+        return Isp::query()
+            ->where('is_active', true)
+            ->get()
+            ->sum(function (Isp $isp) use ($preset): int {
+                return (int) $this->snapshotUsageService->computeRangeUsage(
+                    $isp->snapshots(),
+                    $preset->start,
+                    $preset->end,
+                    ['rx_bytes_total', 'tx_bytes_total'],
+                    false,
+                )['total_bytes'];
+            });
     }
 }

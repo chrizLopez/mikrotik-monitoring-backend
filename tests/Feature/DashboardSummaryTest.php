@@ -9,8 +9,10 @@ use App\Models\MonitoredUser;
 use App\Models\RouteStatusSnapshot;
 use App\Models\UserSnapshot;
 use App\Models\User;
+use App\Services\UsageAggregationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use Mockery;
 use Tests\TestCase;
 
 class DashboardSummaryTest extends TestCase
@@ -66,8 +68,22 @@ class DashboardSummaryTest extends TestCase
             ->assertJsonPath('data.throttled_user_count', 1)
             ->assertJsonPath('data.active_isp_count', 1)
             ->assertJsonPath('data.total_isp_traffic_this_cycle', 11000)
-            ->assertJsonPath('data.total_user_traffic_this_cycle', 123456)
+            ->assertJsonPath('data.total_user_traffic_this_cycle', 126456)
             ->assertJsonPath('data.total_isp_traffic_for_range', 11000)
-            ->assertJsonPath('data.total_user_traffic_for_range', 123456);
+            ->assertJsonPath('data.total_user_traffic_for_range', 126456);
+    }
+
+    public function test_summary_endpoint_reuses_short_cache_for_cycle_aggregation(): void
+    {
+        $cycle = BillingCycle::factory()->create(['is_current' => true]);
+        Sanctum::actingAs(User::factory()->create());
+
+        $mock = Mockery::mock(UsageAggregationService::class);
+        $mock->shouldReceive('aggregateCycle')->twice()->withAnyArgs();
+        $mock->shouldReceive('totalIspTrafficForCycle')->once()->andReturn(0);
+        $this->app->instance(UsageAggregationService::class, $mock);
+
+        $this->getJson('/api/dashboard/summary')->assertOk();
+        $this->getJson('/api/dashboard/summary')->assertOk();
     }
 }

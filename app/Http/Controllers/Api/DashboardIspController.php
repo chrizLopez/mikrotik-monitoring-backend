@@ -17,6 +17,11 @@ class DashboardIspController extends Controller
         return IspResource::collection($dashboardService->currentIspStats());
     }
 
+    public function show(Isp $isp, DashboardService $dashboardService): IspResource
+    {
+        return IspResource::make($dashboardService->currentIspStat($isp));
+    }
+
     public function history(RangeRequest $request, Isp $isp, DashboardService $dashboardService): HistoryResource
     {
         return HistoryResource::make($dashboardService->ispHistory($isp, $request->range()));

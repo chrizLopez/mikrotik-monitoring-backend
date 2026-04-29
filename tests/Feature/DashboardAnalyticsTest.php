@@ -125,4 +125,25 @@ class DashboardAnalyticsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.items.0.throttled_events', 1);
     }
+
+    public function test_quota_timeline_returns_bounded_bucketed_points(): void
+    {
+        BillingCycle::factory()->create(['is_current' => true]);
+        Sanctum::actingAs(User::factory()->create());
+        $user = MonitoredUser::factory()->create(['name' => 'VLAN40 - Peleyo']);
+
+        foreach (range(0, 59) as $minute) {
+            UserSnapshot::factory()->create([
+                'monitored_user_id' => $user->id,
+                'upload_bytes_total' => 1_000 + ($minute * 100),
+                'download_bytes_total' => 2_000 + ($minute * 100),
+                'recorded_at' => now()->subMinutes(60 - $minute),
+            ]);
+        }
+
+        $response = $this->getJson("/api/dashboard/users/{$user->id}/quota-timeline?range=1h")
+            ->assertOk();
+
+        $this->assertLessThanOrEqual(13, count($response->json('data.points')));
+    }
 }

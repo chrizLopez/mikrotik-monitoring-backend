@@ -22,7 +22,7 @@ class DashboardExportController extends Controller
 
         return response()->streamDownload(function () use ($dashboardService): void {
             $handle = fopen('php://output', 'w');
-            $users = $dashboardService->currentUserStats();
+            $users = $dashboardService->paginatedUserStats(perPage: 100);
 
             fputcsv($handle, [
                 'Name',
@@ -40,23 +40,27 @@ class DashboardExportController extends Controller
                 'Last Snapshot At',
             ]);
 
-            foreach ($users as $user) {
-                $summary = $user->monthlySummaries->first();
+            foreach ($users->items() as $user) {
+                $lastSnapshotAt = $user->last_snapshot_at;
+
+                if ($lastSnapshotAt !== null && ! $lastSnapshotAt instanceof \Carbon\CarbonInterface) {
+                    $lastSnapshotAt = now()->parse($lastSnapshotAt);
+                }
 
                 fputcsv($handle, [
                     $user->name,
                     $user->queue_name,
                     $user->group_name,
                     $user->subnet,
-                    $summary?->upload_bytes ?? 0,
-                    $summary?->download_bytes ?? 0,
-                    $summary?->total_bytes ?? 0,
-                    $summary?->quota_bytes ?? $user->monthly_quota_bytes,
-                    $summary?->remaining_bytes ?? $user->monthly_quota_bytes,
-                    $summary?->usage_percent ?? 0,
-                    $summary?->state ?? 'NORMAL',
-                    $summary?->current_max_limit,
-                    $summary?->last_snapshot_at?->toIso8601String(),
+                    $user->upload_bytes ?? 0,
+                    $user->download_bytes ?? 0,
+                    $user->total_bytes ?? 0,
+                    $user->quota_bytes ?? $user->monthly_quota_bytes,
+                    $user->remaining_bytes ?? $user->monthly_quota_bytes,
+                    $user->usage_percent ?? 0,
+                    $user->state ?? 'NORMAL',
+                    $user->current_max_limit,
+                    $lastSnapshotAt?->toIso8601String(),
                 ]);
             }
 

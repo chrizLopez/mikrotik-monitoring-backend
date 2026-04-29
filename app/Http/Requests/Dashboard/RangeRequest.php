@@ -14,7 +14,7 @@ class RangeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'range' => ['nullable', 'in:today,24h,7d,30d,cycle,prev_cycle'],
+            'range' => ['nullable', 'in:10m,1h,today,24h,7d,30d,cycle,prev_cycle'],
         ];
     }
 

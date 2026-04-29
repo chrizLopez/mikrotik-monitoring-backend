@@ -13,9 +13,11 @@ class RangeService
         $now = CarbonImmutable::now();
 
         return match ($range) {
+            '10m' => new RangePreset('10m', $now->subMinutes(10), $now, '5m', 'Last 10 Minutes'),
+            '1h' => new RangePreset('1h', $now->subHour(), $now, '5m', 'Last 1 Hour'),
             'today' => new RangePreset('today', $now->startOfDay(), $now, 'hour', 'Today'),
-            '24h' => new RangePreset('24h', $now->subDay(), $now, 'hour', 'Last 24 Hours'),
-            '7d' => new RangePreset('7d', $now->subDays(7), $now, 'day', 'Last 7 Days'),
+            '24h' => new RangePreset('24h', $now->subDay(), $now, '15m', 'Last 24 Hours'),
+            '7d' => new RangePreset('7d', $now->subDays(7), $now, 'hour', 'Last 7 Days'),
             '30d' => new RangePreset('30d', $now->subDays(30), $now, 'day', 'Last 30 Days'),
             'cycle' => $this->resolveCycleRange($cycle),
             'prev_cycle' => $this->resolvePreviousCycleRange($cycle),

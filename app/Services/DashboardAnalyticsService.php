@@ -10,6 +10,7 @@ use App\Services\Support\RangeService;
 use App\Services\Support\SnapshotUsageService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardAnalyticsService
@@ -24,27 +25,36 @@ class DashboardAnalyticsService
 
     public function live(int $activeUserLimit = 5): array
     {
-        $isps = $this->dashboardService->currentIspStats()->map(fn (Isp $isp): array => [
-            'id' => $isp->id,
-            'name' => $isp->name,
-            'interface_name' => $isp->interface_name,
-            'status' => $isp->status,
-            'current_rx_bps' => (int) ($isp->snapshots->first()?->rx_bps ?? 0),
-            'current_tx_bps' => (int) ($isp->snapshots->first()?->tx_bps ?? 0),
-            'current_total_bps' => (int) (($isp->snapshots->first()?->rx_bps ?? 0) + ($isp->snapshots->first()?->tx_bps ?? 0)),
-            'last_poll_timestamp' => $isp->snapshots->first()?->recorded_at?->toIso8601String(),
-            'trend' => $isp->snapshots()->latest('recorded_at')->limit(12)->get()->reverse()->values()->map(fn ($snapshot): array => [
-                'timestamp' => $snapshot->recorded_at->toIso8601String(),
-                'rx_bps' => (int) ($snapshot->rx_bps ?? 0),
-                'tx_bps' => (int) ($snapshot->tx_bps ?? 0),
-                'total_bps' => (int) (($snapshot->rx_bps ?? 0) + ($snapshot->tx_bps ?? 0)),
-            ])->all(),
-        ])->values();
+        return Cache::remember(sprintf('dashboard:live:%d', $activeUserLimit), now()->addSeconds(15), function () use ($activeUserLimit): array {
+            $isps = $this->dashboardService->currentIspStats()->map(fn (Isp $isp): array => [
+                'id' => $isp->id,
+                'name' => $isp->name,
+                'interface_name' => $isp->interface_name,
+                'status' => $isp->status,
+                'current_rx_bps' => (int) ($isp->snapshots->first()?->rx_bps ?? 0),
+                'current_tx_bps' => (int) ($isp->snapshots->first()?->tx_bps ?? 0),
+                'current_total_bps' => (int) (($isp->snapshots->first()?->rx_bps ?? 0) + ($isp->snapshots->first()?->tx_bps ?? 0)),
+                'last_poll_timestamp' => $isp->snapshots->first()?->recorded_at?->toIso8601String(),
+                'trend' => $isp->snapshots()
+                    ->where('recorded_at', '>=', now()->subMinutes(10))
+                    ->latest('recorded_at')
+                    ->limit(12)
+                    ->get()
+                    ->reverse()
+                    ->values()
+                    ->map(fn ($snapshot): array => [
+                        'timestamp' => $snapshot->recorded_at->toIso8601String(),
+                        'rx_bps' => (int) ($snapshot->rx_bps ?? 0),
+                        'tx_bps' => (int) ($snapshot->tx_bps ?? 0),
+                        'total_bps' => (int) (($snapshot->rx_bps ?? 0) + ($snapshot->tx_bps ?? 0)),
+                    ])->all(),
+            ])->values();
 
-        return [
-            'isps' => $isps,
-            'top_active_users' => $this->topActiveUsers($activeUserLimit),
-        ];
+            return [
+                'isps' => $isps,
+                'top_active_users' => $this->topActiveUsers($activeUserLimit),
+            ];
+        });
     }
 
     public function topActiveUsers(int $limit = 10): array
@@ -265,15 +275,27 @@ class DashboardAnalyticsService
                     ['upload_bytes_total', 'download_bytes_total'],
                     $previous,
                 );
-                $runningTotal += (int) (($delta['upload_bytes_total'] ?? 0) + ($delta['download_bytes_total'] ?? 0));
-                $points[] = [
-                    'timestamp' => $bucket,
-                    'upload_bytes' => (int) ($delta['upload_bytes_total'] ?? 0),
-                    'download_bytes' => (int) ($delta['download_bytes_total'] ?? 0),
-                    'total_bytes' => (int) (($delta['upload_bytes_total'] ?? 0) + ($delta['download_bytes_total'] ?? 0)),
-                    'cumulative_bytes' => $runningTotal,
-                    'state' => $snapshot->state,
-                ];
+                $uploadBytes = (int) ($delta['upload_bytes_total'] ?? 0);
+                $downloadBytes = (int) ($delta['download_bytes_total'] ?? 0);
+                $bucketTotal = $uploadBytes + $downloadBytes;
+                $runningTotal += $bucketTotal;
+
+                if (! isset($points[$bucket])) {
+                    $points[$bucket] = [
+                        'timestamp' => $bucket,
+                        'upload_bytes' => 0,
+                        'download_bytes' => 0,
+                        'total_bytes' => 0,
+                        'cumulative_bytes' => 0,
+                        'state' => $snapshot->state,
+                    ];
+                }
+
+                $points[$bucket]['upload_bytes'] += $uploadBytes;
+                $points[$bucket]['download_bytes'] += $downloadBytes;
+                $points[$bucket]['total_bytes'] += $bucketTotal;
+                $points[$bucket]['cumulative_bytes'] = $runningTotal;
+                $points[$bucket]['state'] = $snapshot->state;
                 $previous = $snapshot;
             });
 
@@ -287,7 +309,7 @@ class DashboardAnalyticsService
                 'quota_bytes' => (int) $quota['quota_bytes'],
                 'usage_percent' => (float) $quota['usage_percent'],
             ],
-            'points' => $points,
+            'points' => array_values($points),
         ];
     }
 
