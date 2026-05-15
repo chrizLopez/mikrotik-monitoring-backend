@@ -17,7 +17,7 @@ WAN mapping:
 
 - `ether1` = Old Starlink
 - `ether2` = New Starlink
-- `ether4` = SmartBro
+- `ether4` = Globe
 
 Group mapping:
 
@@ -100,7 +100,7 @@ php artisan db:seed
 
 Seeders create:
 
-- `isps`: `Old Starlink`, `New Starlink`, `SmartBro`
+- `isps`: `Starlink`, `SmartBro A`, `Globe`
 - `monitored_users`: seven real queue-backed users
 - `users`: default admin from `ADMIN_*`
 

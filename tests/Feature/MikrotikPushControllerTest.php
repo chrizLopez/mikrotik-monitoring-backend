@@ -318,14 +318,14 @@ class MikrotikPushControllerTest extends TestCase
         config()->set('mikrotik.push_token', 'shared-secret');
 
         $isp = Isp::factory()->create([
-            'name' => 'SmartBro B',
-            'interface_name' => 'ether4 - SmartBro B',
+            'name' => 'Globe',
+            'interface_name' => 'ether4 - Globe',
         ]);
 
         $this->postJson('/api/mikrotik/push?token=shared-secret', [
             'interfaces' => [
                 [
-                    'name' => 'ether4 - SmartBro B',
+                    'name' => 'ether4 - Globe',
                     'rx_bytes' => 7777,
                     'tx_bytes' => 8888,
                 ],

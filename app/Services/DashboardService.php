@@ -396,7 +396,7 @@ class DashboardService
         })->values();
 
         return [
-            'label' => 'SmartBro Total',
+            'label' => 'Smart/Globe Total',
             'used_bytes' => (int) $items->sum('used_bytes'),
             'items' => $items->all(),
         ];

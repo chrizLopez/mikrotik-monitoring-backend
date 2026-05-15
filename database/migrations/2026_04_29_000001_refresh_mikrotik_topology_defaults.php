@@ -23,8 +23,8 @@ return new class extends Migration
                     'is_active' => true,
                 ],
                 [
-                    'name' => 'SmartBro B',
-                    'interface_name' => 'ether4 - SmartBro B',
+                    'name' => 'Globe',
+                    'interface_name' => 'ether4 - Globe',
                     'display_order' => 3,
                     'is_active' => true,
                 ],
@@ -72,7 +72,7 @@ return new class extends Migration
                 ->whereIn('interface_name', [
                     'ether1 - Starlink',
                     'ether2 - SmartBro A',
-                    'ether4 - SmartBro B',
+                    'ether4 - Globe',
                 ])
                 ->update(['is_active' => false]);
         }

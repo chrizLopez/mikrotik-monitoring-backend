@@ -24,9 +24,9 @@ return [
         ],
         'smart_b' => [
             'key' => 'SMART_B',
-            'label' => 'SmartBro B',
-            'interface' => 'ether4 - SmartBro B',
-            'gateway' => '192.168.1.1',
+            'label' => 'Globe',
+            'interface' => 'ether4 - Globe',
+            'gateway' => '192.168.8.1',
         ],
     ],
     'user_groups' => [
