@@ -54,6 +54,7 @@ Supported payload fields:
 - `queues` optional array
 - `interfaces` optional array
 - `health` optional array
+- `destinations` optional array
 
 Queue payload rules:
 
@@ -67,6 +68,13 @@ Interface payload rules:
 - exact match against `isps.interface_name`
 - expected WAN interfaces are `ether1`, `ether2`, `ether4`
 - unknown interface names are logged and ignored
+
+Destination payload rules:
+
+- supported categories are `apps`, `sites`, and `games`
+- expected fields are `name`, `visits`, `total_bytes`, optional `top_user`, and optional `last_seen_at`
+- rows are stored in `destination_snapshots`
+- rankings are approximate unless the router script can map flows to DNS names reliably
 
 Health payload rules:
 

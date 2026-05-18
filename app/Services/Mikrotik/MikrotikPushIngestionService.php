@@ -2,6 +2,7 @@
 
 namespace App\Services\Mikrotik;
 
+use App\Models\DestinationSnapshot;
 use App\Models\Isp;
 use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
@@ -24,6 +25,7 @@ class MikrotikPushIngestionService
         $queues = is_array($request->input('queues')) ? $request->input('queues') : [];
         $interfaces = is_array($request->input('interfaces')) ? $request->input('interfaces') : [];
         $healthItems = is_array($request->input('health')) ? $request->input('health') : [];
+        $destinations = is_array($request->input('destinations')) ? $request->input('destinations') : [];
 
         Log::info('MikroTik push endpoint accessed.', [
             'ip' => $request->ip(),
@@ -32,9 +34,11 @@ class MikrotikPushIngestionService
             'queue_count' => count($queues),
             'interface_count' => count($interfaces),
             'health_count' => count($healthItems),
+            'destination_count' => count($destinations),
             'queue_names' => collect($queues)->pluck('name')->filter()->values()->all(),
             'interface_names' => collect($interfaces)->pluck('name')->filter()->values()->all(),
             'health_names' => collect($healthItems)->pluck('name')->filter()->values()->all(),
+            'destination_names' => collect($destinations)->pluck('name')->filter()->take(20)->values()->all(),
             'has_query_token' => $request->query->has('token'),
             'has_header_token' => $request->headers->has('X-Mikrotik-Token'),
         ]);
@@ -89,6 +93,7 @@ class MikrotikPushIngestionService
         $queuesIngested = 0;
         $interfacesIngested = 0;
         $healthIngested = 0;
+        $destinationsIngested = 0;
 
         DB::transaction(function () use (
             $payload,
@@ -98,10 +103,12 @@ class MikrotikPushIngestionService
             &$queuesIngested,
             &$interfacesIngested,
             &$healthIngested,
+            &$destinationsIngested,
         ): void {
             $queues = $payload['queues'] ?? [];
             $interfaces = $payload['interfaces'] ?? [];
             $healthItems = $payload['health'] ?? [];
+            $destinations = $payload['destinations'] ?? [];
 
             $userMap = MonitoredUser::query()
                 ->where('is_active', true)
@@ -225,6 +232,22 @@ class MikrotikPushIngestionService
 
                 $healthIngested++;
             }
+
+            foreach ($destinations as $destination) {
+                DestinationSnapshot::query()->create([
+                    'category' => $destination['category'],
+                    'name' => $destination['name'],
+                    'visits' => (int) ($destination['visits'] ?? 1),
+                    'total_bytes' => (int) ($destination['total_bytes'] ?? 0),
+                    'top_user' => $destination['top_user'] ?? null,
+                    'last_seen_at' => isset($destination['last_seen_at'])
+                        ? CarbonImmutable::parse($destination['last_seen_at'])
+                        : $recordedAt,
+                    'recorded_at' => $recordedAt,
+                ]);
+
+                $destinationsIngested++;
+            }
         });
 
         Log::info('MikroTik push data ingested successfully.', [
@@ -232,6 +255,7 @@ class MikrotikPushIngestionService
             'queues_ingested' => $queuesIngested,
             'interfaces_ingested' => $interfacesIngested,
             'health_ingested' => $healthIngested,
+            'destinations_ingested' => $destinationsIngested,
             'skipped_queues' => $skippedQueues,
             'recorded_at' => $recordedAt->toDateTimeString(),
         ]);
@@ -242,6 +266,7 @@ class MikrotikPushIngestionService
             'queues_ingested' => $queuesIngested,
             'interfaces_ingested' => $interfacesIngested,
             'health_ingested' => $healthIngested,
+            'destinations_ingested' => $destinationsIngested,
             'skipped_queues' => array_values(array_unique($skippedQueues)),
         ];
     }

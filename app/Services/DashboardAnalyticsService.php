@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DestinationSnapshot;
 use App\Models\Isp;
 use App\Models\MonitoredUser;
 use App\Models\UserSnapshot;
@@ -11,6 +12,7 @@ use App\Services\Support\SnapshotUsageService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardAnalyticsService
@@ -260,15 +262,58 @@ class DashboardAnalyticsService
     public function popularDestinations(string $range): array
     {
         $preset = $this->resolveRange($range);
+        $emptyItems = [
+            'apps' => [],
+            'sites' => [],
+            'games' => [],
+        ];
+
+        if (! Schema::hasTable('destination_snapshots')) {
+            return [
+                'range' => $this->serializeRange($preset),
+                'collection_status' => 'not_configured',
+                'items' => $emptyItems,
+            ];
+        }
+
+        $items = DestinationSnapshot::query()
+            ->select([
+                'category',
+                'name',
+                DB::raw('SUM(visits) as visits'),
+                DB::raw('SUM(total_bytes) as total_bytes'),
+                DB::raw('MAX(last_seen_at) as last_seen_at'),
+            ])
+            ->whereBetween('recorded_at', [$preset->start, $preset->end])
+            ->whereIn('category', ['apps', 'sites', 'games'])
+            ->groupBy('category', 'name')
+            ->orderByDesc('total_bytes')
+            ->orderByDesc('visits')
+            ->get()
+            ->groupBy('category');
+
+        $totalBytes = max(1, (int) $items->flatten(1)->sum('total_bytes'));
 
         return [
             'range' => $this->serializeRange($preset),
-            'collection_status' => 'not_configured',
-            'items' => [
-                'apps' => [],
-                'sites' => [],
-                'games' => [],
-            ],
+            'collection_status' => $items->flatten(1)->isNotEmpty() ? 'active' : 'not_configured',
+            'items' => collect($emptyItems)
+                ->map(fn (array $empty, string $category): array => $items
+                    ->get($category, collect())
+                    ->take(10)
+                    ->values()
+                    ->map(fn (DestinationSnapshot $item): array => [
+                        'id' => sha1($category.'|'.$item->name),
+                        'category' => $category,
+                        'name' => $item->name,
+                        'visits' => (int) $item->visits,
+                        'total_bytes' => (int) $item->total_bytes,
+                        'share_percent' => round(((int) $item->total_bytes / $totalBytes) * 100, 2),
+                        'top_user' => null,
+                        'last_seen_at' => $item->last_seen_at?->toIso8601String(),
+                    ])
+                    ->all())
+                ->all(),
         ];
     }
 

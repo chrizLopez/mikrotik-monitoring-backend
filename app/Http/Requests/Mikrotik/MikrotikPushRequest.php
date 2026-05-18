@@ -32,6 +32,13 @@ class MikrotikPushRequest extends FormRequest
             'health.*.packet_loss_percent' => ['nullable', 'numeric', 'min:0'],
             'health.*.jitter_ms' => ['nullable', 'numeric', 'min:0'],
             'health.*.status' => ['required', 'string', 'in:online,offline,degraded,unknown'],
+            'destinations' => ['nullable', 'array'],
+            'destinations.*.category' => ['required', 'string', 'in:apps,sites,games'],
+            'destinations.*.name' => ['required', 'string', 'max:255'],
+            'destinations.*.visits' => ['nullable', 'integer', 'min:0'],
+            'destinations.*.total_bytes' => ['nullable', 'numeric', 'min:0'],
+            'destinations.*.top_user' => ['nullable', 'string', 'max:255'],
+            'destinations.*.last_seen_at' => ['nullable', 'date'],
         ];
     }
 }
