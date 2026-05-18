@@ -257,6 +257,21 @@ class DashboardAnalyticsService
         ];
     }
 
+    public function popularDestinations(string $range): array
+    {
+        $preset = $this->resolveRange($range);
+
+        return [
+            'range' => $this->serializeRange($preset),
+            'collection_status' => 'not_configured',
+            'items' => [
+                'apps' => [],
+                'sites' => [],
+                'games' => [],
+            ],
+        ];
+    }
+
     public function quotaTimeline(MonitoredUser $user, string $range): array
     {
         $preset = $this->resolveRange($range);

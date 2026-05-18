@@ -36,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/groups/usage', [DashboardGroupController::class, 'usage']);
         Route::get('/alerts', [DashboardAnalyticsController::class, 'alerts']);
         Route::get('/comparisons', [DashboardAnalyticsController::class, 'comparisons']);
+        Route::get('/popular-destinations', [DashboardAnalyticsController::class, 'popularDestinations']);
         Route::get('/reports', [DashboardAnalyticsController::class, 'reports']);
         Route::get('/export/users.csv', [DashboardExportController::class, 'users']);
         Route::get('/export/top-users.csv', [DashboardExportController::class, 'topUsers']);

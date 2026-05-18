@@ -60,4 +60,9 @@ class DashboardAnalyticsController extends Controller
     {
         return response()->json(['data' => $analytics->reports($request->range())]);
     }
+
+    public function popularDestinations(RangeRequest $request, DashboardAnalyticsService $analytics): JsonResponse
+    {
+        return response()->json(['data' => $analytics->popularDestinations($request->range())]);
+    }
 }
