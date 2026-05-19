@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\BillingCycle;
+use App\Models\DestinationSnapshot;
 use App\Models\Isp;
 use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
@@ -145,5 +146,44 @@ class DashboardAnalyticsTest extends TestCase
             ->assertOk();
 
         $this->assertLessThanOrEqual(13, count($response->json('data.points')));
+    }
+
+    public function test_popular_destinations_are_grouped_by_known_app_and_game_keywords(): void
+    {
+        $cycle = BillingCycle::factory()->create(['is_current' => true]);
+        Sanctum::actingAs(User::factory()->create());
+
+        DestinationSnapshot::query()->create([
+            'category' => 'sites',
+            'name' => 'v16-webapp-prime.tiktok.com',
+            'visits' => 2,
+            'total_bytes' => 100,
+            'last_seen_at' => $cycle->starts_at->copy()->addMinutes(5),
+            'recorded_at' => $cycle->starts_at->copy()->addMinutes(5),
+        ]);
+        DestinationSnapshot::query()->create([
+            'category' => 'apps',
+            'name' => 'p16-sign-va.tiktokcdn.com',
+            'visits' => 3,
+            'total_bytes' => 200,
+            'last_seen_at' => $cycle->starts_at->copy()->addMinutes(10),
+            'recorded_at' => $cycle->starts_at->copy()->addMinutes(10),
+        ]);
+        DestinationSnapshot::query()->create([
+            'category' => 'sites',
+            'name' => 'dl.garena.com',
+            'visits' => 4,
+            'total_bytes' => 500,
+            'last_seen_at' => $cycle->starts_at->copy()->addMinutes(15),
+            'recorded_at' => $cycle->starts_at->copy()->addMinutes(15),
+        ]);
+
+        $this->getJson('/api/dashboard/popular-destinations?range=cycle')
+            ->assertOk()
+            ->assertJsonPath('data.items.apps.0.name', 'TikTok')
+            ->assertJsonPath('data.items.apps.0.visits', 5)
+            ->assertJsonPath('data.items.apps.0.total_bytes', 300)
+            ->assertJsonPath('data.items.games.0.name', 'Call of Duty')
+            ->assertJsonPath('data.items.games.0.visits', 4);
     }
 }

@@ -7,6 +7,7 @@ use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\UserSnapshot;
+use App\Models\DestinationSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
@@ -255,6 +256,45 @@ class MikrotikPushControllerTest extends TestCase
         $this->assertSame(24.5, $snapshot->latency_ms);
         $this->assertSame(0.0, $snapshot->packet_loss_percent);
         $this->assertSame(3.2, $snapshot->jitter_ms);
+    }
+
+    public function test_destination_push_normalizes_known_names_before_storing(): void
+    {
+        config()->set('mikrotik.push_token', 'shared-secret');
+
+        $this->postJson('/api/mikrotik/push?token=shared-secret', [
+            'destinations' => [
+                [
+                    'category' => 'sites',
+                    'name' => 'rr2---sn-a5mlrn7s.googlevideo.com',
+                    'visits' => 2,
+                    'total_bytes' => 100,
+                ],
+                [
+                    'category' => 'sites',
+                    'name' => 'dl.garena.com',
+                    'visits' => 1,
+                    'total_bytes' => 50,
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJson([
+                'destinations_ingested' => 2,
+            ]);
+
+        $this->assertDatabaseHas('destination_snapshots', [
+            'category' => 'apps',
+            'name' => 'YouTube',
+            'visits' => 2,
+        ]);
+        $this->assertDatabaseHas('destination_snapshots', [
+            'category' => 'games',
+            'name' => 'Call of Duty',
+            'visits' => 1,
+        ]);
+
+        $this->assertSame(2, DestinationSnapshot::query()->count());
     }
 
     public function test_unknown_health_interfaces_are_logged_and_skipped(): void

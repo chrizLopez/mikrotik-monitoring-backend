@@ -8,6 +8,7 @@ use App\Models\IspHealthSnapshot;
 use App\Models\IspSnapshot;
 use App\Models\MonitoredUser;
 use App\Models\UserSnapshot;
+use App\Services\DestinationClassifier;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,7 @@ class MikrotikPushIngestionService
 {
     public function __construct(
         protected readonly CounterDeltaCalculator $counterDeltaCalculator,
+        protected readonly DestinationClassifier $destinationClassifier,
     ) {
     }
 
@@ -234,9 +236,11 @@ class MikrotikPushIngestionService
             }
 
             foreach ($destinations as $destination) {
+                $classifiedDestination = $this->destinationClassifier->classify($destination['name'], $destination['category']);
+
                 DestinationSnapshot::query()->create([
-                    'category' => $destination['category'],
-                    'name' => $destination['name'],
+                    'category' => $classifiedDestination['category'],
+                    'name' => $classifiedDestination['name'],
                     'visits' => (int) ($destination['visits'] ?? 1),
                     'total_bytes' => (int) ($destination['total_bytes'] ?? 0),
                     'top_user' => $destination['top_user'] ?? null,

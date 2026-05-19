@@ -20,6 +20,7 @@ class DashboardAnalyticsService
     public function __construct(
         private readonly BillingCycleService $billingCycleService,
         private readonly DashboardService $dashboardService,
+        private readonly DestinationClassifier $destinationClassifier,
         private readonly RangeService $rangeService,
         private readonly SnapshotUsageService $snapshotUsageService,
     ) {
@@ -276,7 +277,7 @@ class DashboardAnalyticsService
             ];
         }
 
-        $items = DestinationSnapshot::query()
+        $rawItems = DestinationSnapshot::query()
             ->select([
                 'category',
                 'name',
@@ -289,7 +290,35 @@ class DashboardAnalyticsService
             ->groupBy('category', 'name')
             ->orderByDesc('total_bytes')
             ->orderByDesc('visits')
-            ->get()
+            ->get();
+
+        $items = $rawItems
+            ->reduce(function (Collection $groups, DestinationSnapshot $item): Collection {
+                $destination = $this->destinationClassifier->classify($item->name, $item->category);
+                $key = $destination['category'].'|'.$destination['name'];
+                $existing = $groups->get($key, [
+                    'category' => $destination['category'],
+                    'name' => $destination['name'],
+                    'visits' => 0,
+                    'total_bytes' => 0,
+                    'last_seen_at' => null,
+                ]);
+
+                $lastSeenAt = $item->last_seen_at;
+                if ($lastSeenAt && (! $existing['last_seen_at'] || $lastSeenAt->greaterThan($existing['last_seen_at']))) {
+                    $existing['last_seen_at'] = $lastSeenAt;
+                }
+
+                $existing['visits'] += (int) $item->visits;
+                $existing['total_bytes'] += (int) $item->total_bytes;
+
+                return $groups->put($key, $existing);
+            }, collect())
+            ->values()
+            ->sortBy([
+                ['total_bytes', 'desc'],
+                ['visits', 'desc'],
+            ])
             ->groupBy('category');
 
         $totalBytes = max(1, (int) $items->flatten(1)->sum('total_bytes'));
@@ -302,15 +331,15 @@ class DashboardAnalyticsService
                     ->get($category, collect())
                     ->take(10)
                     ->values()
-                    ->map(fn (DestinationSnapshot $item): array => [
-                        'id' => sha1($category.'|'.$item->name),
+                    ->map(fn (array $item): array => [
+                        'id' => sha1($category.'|'.$item['name']),
                         'category' => $category,
-                        'name' => $item->name,
-                        'visits' => (int) $item->visits,
-                        'total_bytes' => (int) $item->total_bytes,
-                        'share_percent' => round(((int) $item->total_bytes / $totalBytes) * 100, 2),
+                        'name' => $item['name'],
+                        'visits' => (int) $item['visits'],
+                        'total_bytes' => (int) $item['total_bytes'],
+                        'share_percent' => round(((int) $item['total_bytes'] / $totalBytes) * 100, 2),
                         'top_user' => null,
-                        'last_seen_at' => $item->last_seen_at?->toIso8601String(),
+                        'last_seen_at' => $item['last_seen_at']?->toIso8601String(),
                     ])
                     ->all())
                 ->all(),
