@@ -9,15 +9,23 @@ class DestinationClassifier
      */
     private const RULES = [
         'apps' => [
+            ['name' => 'Apple', 'keywords' => ['apple.com', 'itunes.apple', 'icloud', 'mzstatic', 'apple-dns']],
             ['name' => 'YouTube', 'keywords' => ['youtube', 'youtu.be', 'googlevideo', 'ytimg']],
-            ['name' => 'TikTok', 'keywords' => ['tiktok', 'tiktokcdn', 'byteoversea', 'ibytedtos', 'pangle', 'musical.ly']],
+            ['name' => 'TikTok', 'keywords' => ['tiktok', 'tiktokcdn', 'byteoversea', 'ibytedtos', 'pangle', 'pglstatp', 'musical.ly']],
             ['name' => 'Facebook', 'keywords' => ['facebook', 'fbcdn', 'fbsbx', 'messenger']],
             ['name' => 'Instagram', 'keywords' => ['instagram', 'cdninstagram']],
             ['name' => 'Netflix', 'keywords' => ['netflix', 'nflxvideo', 'nflximg', 'nflxso']],
+            ['name' => 'Shopee', 'keywords' => ['shopee', 'shopeemobile']],
+            ['name' => 'PalmPlay Store', 'keywords' => ['palmplaystore']],
             ['name' => 'Spotify', 'keywords' => ['spotify', 'scdn.co']],
             ['name' => 'WhatsApp', 'keywords' => ['whatsapp', 'whatsapp.net']],
         ],
+        'sites' => [
+            ['name' => 'MikroTik', 'keywords' => ['mikrotik']],
+            ['name' => 'DNS Root Servers', 'keywords' => ['.root-servers.net']],
+        ],
         'games' => [
+            ['name' => 'Aha Game Center', 'keywords' => ['ahagamecenter']],
             ['name' => 'Call of Duty', 'keywords' => ['callofduty', 'codm', 'activision', 'demonware', 'garena', 'gfaren']],
             ['name' => 'Roblox', 'keywords' => ['roblox']],
             ['name' => 'Steam', 'keywords' => ['steam', 'steamcontent', 'steampowered']],

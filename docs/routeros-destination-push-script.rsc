@@ -19,13 +19,19 @@
       :local category "sites";
       :local displayName $host;
 
+      :if (([:typeof [:find $host "apple.com"]] != "nil") || ([:typeof [:find $host "itunes.apple"]] != "nil") || ([:typeof [:find $host "icloud"]] != "nil") || ([:typeof [:find $host "mzstatic"]] != "nil")) do={ :set category "apps"; :set displayName "Apple"; }
       :if (([:typeof [:find $host "youtube"]] != "nil") || ([:typeof [:find $host "googlevideo"]] != "nil") || ([:typeof [:find $host "ytimg"]] != "nil")) do={ :set category "apps"; :set displayName "YouTube"; }
-      :if (([:typeof [:find $host "tiktok"]] != "nil") || ([:typeof [:find $host "tiktokcdn"]] != "nil") || ([:typeof [:find $host "pangle"]] != "nil") || ([:typeof [:find $host "byteoversea"]] != "nil")) do={ :set category "apps"; :set displayName "TikTok"; }
+      :if (([:typeof [:find $host "tiktok"]] != "nil") || ([:typeof [:find $host "tiktokcdn"]] != "nil") || ([:typeof [:find $host "pangle"]] != "nil") || ([:typeof [:find $host "pglstatp"]] != "nil") || ([:typeof [:find $host "byteoversea"]] != "nil")) do={ :set category "apps"; :set displayName "TikTok"; }
       :if (([:typeof [:find $host "facebook"]] != "nil") || ([:typeof [:find $host "fbcdn"]] != "nil") || ([:typeof [:find $host "fbsbx"]] != "nil") || ([:typeof [:find $host "messenger"]] != "nil")) do={ :set category "apps"; :set displayName "Facebook"; }
       :if (([:typeof [:find $host "instagram"]] != "nil") || ([:typeof [:find $host "cdninstagram"]] != "nil")) do={ :set category "apps"; :set displayName "Instagram"; }
       :if (([:typeof [:find $host "netflix"]] != "nil") || ([:typeof [:find $host "nflxvideo"]] != "nil")) do={ :set category "apps"; :set displayName "Netflix"; }
+      :if (([:typeof [:find $host "shopee"]] != "nil") || ([:typeof [:find $host "shopeemobile"]] != "nil")) do={ :set category "apps"; :set displayName "Shopee"; }
+      :if ([:typeof [:find $host "palmplaystore"]] != "nil") do={ :set category "apps"; :set displayName "PalmPlay Store"; }
       :if (([:typeof [:find $host "spotify"]] != "nil") || ([:typeof [:find $host "scdn.co"]] != "nil")) do={ :set category "apps"; :set displayName "Spotify"; }
+      :if ([:typeof [:find $host "mikrotik"]] != "nil") do={ :set category "sites"; :set displayName "MikroTik"; }
+      :if ([:typeof [:find $host ".root-servers.net"]] != "nil") do={ :set category "sites"; :set displayName "DNS Root Servers"; }
 
+      :if ([:typeof [:find $host "ahagamecenter"]] != "nil") do={ :set category "games"; :set displayName "Aha Game Center"; }
       :if (([:typeof [:find $host "callofduty"]] != "nil") || ([:typeof [:find $host "codm"]] != "nil") || ([:typeof [:find $host "activision"]] != "nil") || ([:typeof [:find $host "demonware"]] != "nil") || ([:typeof [:find $host "garena"]] != "nil") || ([:typeof [:find $host "gfaren"]] != "nil")) do={ :set category "games"; :set displayName "Call of Duty"; }
       :if ([:typeof [:find $host "roblox"]] != "nil") do={ :set category "games"; :set displayName "Roblox"; }
       :if (([:typeof [:find $host "steam"]] != "nil") || ([:typeof [:find $host "steamcontent"]] != "nil") || ([:typeof [:find $host "steampowered"]] != "nil")) do={ :set category "games"; :set displayName "Steam"; }

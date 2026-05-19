@@ -177,13 +177,40 @@ class DashboardAnalyticsTest extends TestCase
             'last_seen_at' => $cycle->starts_at->copy()->addMinutes(15),
             'recorded_at' => $cycle->starts_at->copy()->addMinutes(15),
         ]);
+        DestinationSnapshot::query()->create([
+            'category' => 'sites',
+            'name' => 'apse1-wps-prod.apple.com',
+            'visits' => 6,
+            'total_bytes' => 50,
+            'last_seen_at' => $cycle->starts_at->copy()->addMinutes(20),
+            'recorded_at' => $cycle->starts_at->copy()->addMinutes(20),
+        ]);
+        DestinationSnapshot::query()->create([
+            'category' => 'sites',
+            'name' => 'cloud2.mikrotik.com',
+            'visits' => 2,
+            'total_bytes' => 25,
+            'last_seen_at' => $cycle->starts_at->copy()->addMinutes(25),
+            'recorded_at' => $cycle->starts_at->copy()->addMinutes(25),
+        ]);
+        DestinationSnapshot::query()->create([
+            'category' => 'sites',
+            'name' => 'api-quic.ahagamecenter.com',
+            'visits' => 7,
+            'total_bytes' => 75,
+            'last_seen_at' => $cycle->starts_at->copy()->addMinutes(30),
+            'recorded_at' => $cycle->starts_at->copy()->addMinutes(30),
+        ]);
 
         $this->getJson('/api/dashboard/popular-destinations?range=cycle')
             ->assertOk()
             ->assertJsonPath('data.items.apps.0.name', 'TikTok')
             ->assertJsonPath('data.items.apps.0.visits', 5)
             ->assertJsonPath('data.items.apps.0.total_bytes', 300)
+            ->assertJsonPath('data.items.apps.1.name', 'Apple')
             ->assertJsonPath('data.items.games.0.name', 'Call of Duty')
-            ->assertJsonPath('data.items.games.0.visits', 4);
+            ->assertJsonPath('data.items.games.0.visits', 4)
+            ->assertJsonPath('data.items.games.1.name', 'Aha Game Center')
+            ->assertJsonPath('data.items.sites.0.name', 'MikroTik');
     }
 }
