@@ -4,16 +4,22 @@
 # This runs as a companion to the main PushStatsToLaravel script.
 # Accuracy depends on router DNS visibility. DNS-over-HTTPS/VPN traffic may not
 # expose the real destination name.
+# Schedule this every minute for better one-off visit capture.
 
 :log info "dest-push: start";
 :local token "__TOKEN__";
 :local endpoint ("https://dashboard.phsolarsizer.com/api/mikrotik/push?token=" . $token);
 :local routerName [/system identity get name];
-:local payload ("router_name=" . $routerName);
+:local payloadBase ("router_name=" . $routerName);
+:local payload $payloadBase;
+:local batchLimit 50;
+:local maxDestinations 500;
 :local count 0;
+:local batchCount 0;
+:local batches 0;
 
 :foreach i in=[/ip dns cache find] do={
-  :if ($count < 20) do={
+  :if ($count < $maxDestinations) do={
     :local host [/ip dns cache get $i name];
     :if (([:len $host] > 0) && ([:typeof [:find $host ".lan"]] = "nil") && ([:typeof [:find $host "router."]] = "nil") && ([:typeof [:find $host "in-addr.arpa"]] = "nil")) do={
       :local category "sites";
@@ -40,8 +46,16 @@
       :if (([:typeof [:find $host "mobilelegends"]] != "nil") || ([:typeof [:find $host "moonton"]] != "nil")) do={ :set category "games"; :set displayName "Mobile Legends"; }
       :if ([:typeof [:find $host "minecraft"]] != "nil") do={ :set category "games"; :set displayName "Minecraft"; }
 
-      :set payload ($payload . "&destinations[" . $count . "][category]=" . $category . "&destinations[" . $count . "][name]=" . $displayName . "&destinations[" . $count . "][visits]=1&destinations[" . $count . "][total_bytes]=0");
+      :set payload ($payload . "&destinations[" . $batchCount . "][category]=" . $category . "&destinations[" . $batchCount . "][name]=" . $displayName . "&destinations[" . $batchCount . "][visits]=1&destinations[" . $batchCount . "][total_bytes]=0");
       :set count ($count + 1);
+      :set batchCount ($batchCount + 1);
+
+      :if ($batchCount >= $batchLimit) do={
+        /tool fetch url=$endpoint http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$payload keep-result=no;
+        :set batches ($batches + 1);
+        :set payload $payloadBase;
+        :set batchCount 0;
+      }
     }
   }
 }
@@ -49,6 +63,9 @@
 :if ($count = 0) do={
   :log warning "dest-push: no destinations found";
 } else={
-  /tool fetch url=$endpoint http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$payload keep-result=no;
-  :log info ("dest-push: sent destinations=" . $count);
+  :if ($batchCount > 0) do={
+    /tool fetch url=$endpoint http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$payload keep-result=no;
+    :set batches ($batches + 1);
+  }
+  :log info ("dest-push: sent destinations=" . $count . " batches=" . $batches);
 }

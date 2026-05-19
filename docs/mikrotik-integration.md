@@ -75,6 +75,8 @@ Destination payload rules:
 - expected fields are `name`, `visits`, `total_bytes`, optional `top_user`, and optional `last_seen_at`
 - rows are stored in `destination_snapshots`
 - rankings are approximate unless the router script can map flows to DNS names reliably
+- the companion DNS-cache script batches up to 500 visible DNS entries per run, 50 entries per push, so schedule it every minute to improve one-off visit capture
+- DNS-over-HTTPS, VPN/private DNS, direct-IP traffic, and entries that expire before the next run can still be missed
 
 Health payload rules:
 
